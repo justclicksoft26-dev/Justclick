@@ -26,3 +26,8 @@ td { padding: 10px; border-bottom: 1px solid var(--line); }
 .late { color: #d68910; font-weight: 700; } .absent { color: #c0392b; font-weight: 700; } .ok { color: #1e8449; }
 .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 24px; margin: 0; }
 .info div { display: flex; gap: 6px; } .info dt { color: #6b7684; } .info dt::after { content: ':'; } .info dd { margin: 0; font-weight: 700; }
+.tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.tabs button { background: #e3e8ef; border: 0; border-radius: 6px 6px 0 0; padding: 10px 18px; font: inherit; cursor: pointer; }
+.tabs button.on { background: var(--navy); color: #fff; }
+.muted-note { color: #6b7684; font-size: 13px; }
+.skipped { margin: 6px 0 0; padding-inline-start: 20px; color: #d68910; }

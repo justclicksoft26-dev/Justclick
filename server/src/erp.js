@@ -89,24 +89,6 @@ export async function loadEmployees({ empId = null, from, to, today }) {
 
 export const publicEmployee = ({ holidays, vacations, shifts, _id, ...rest }) => rest;
 
-/** Per-day first/last punch per employee from ATT_EMP (all flags), keyed by ATT_DATE. */
-export async function loadPunches({ empId = null, from, to }) {
-  const { rows } = await query(
-    `SELECT EMP_ID, ${ymd('ATT_DATE')} D, ${hhmm('MIN(ATT_TIME)')} FIRST_T, ${hhmm('MAX(ATT_TIME)')} LAST_T, COUNT(*) CNT
-       FROM ATT_EMP
-      WHERE ATT_TIME IS NOT NULL AND ATT_DATE >= TO_DATE(:f,'YYYY-MM-DD') AND ATT_DATE <= TO_DATE(:t,'YYYY-MM-DD')
-        ${empId == null ? '' : 'AND EMP_ID = :id'}
-      GROUP BY EMP_ID, ATT_DATE`,
-    empId == null ? { f: from, t: to } : { f: from, t: to, id: empId },
-  );
-  const byEmp = new Map();
-  for (const r of rows) {
-    if (!byEmp.has(r.EMP_ID)) byEmp.set(r.EMP_ID, new Map());
-    byEmp.get(r.EMP_ID).set(r.D, { first: r.FIRST_T, last: r.LAST_T, count: r.CNT });
-  }
-  return byEmp;
-}
-
 export async function countPunches() {
   return (await query('SELECT COUNT(*) C FROM ATT_EMP')).rows[0].C;
 }

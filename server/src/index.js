@@ -3,8 +3,8 @@ import cors from 'cors';
 import multer from 'multer';
 import ZKLib from 'node-zklib';
 import { validateEmployee, parsePunchCsv, isValidDate, localToday } from './validation.js';
-import { analyzeEmployee } from './attendance.js';
-import { Conflict, countPunches, createEmployee, deleteEmployee, loadEmployees, loadPunches, publicEmployee, storePunches } from './erp.js';
+import { getActualTimes, getDefaults, getLookups, postActualTimes, summarizeLateAbsent } from './posting.js';
+import { Conflict, countPunches, createEmployee, deleteEmployee, loadEmployees, publicEmployee, storePunches } from './erp.js';
 
 const app = express();
 app.use(cors());
@@ -84,29 +84,42 @@ app.get('/api/punches/count', wrap(async (_req, res) => {
   res.json({ total: await countPunches() });
 }));
 
-// ---------- reports ----------
-app.get('/api/reports/employee', wrap(async (req, res) => {
-  const { code, from, to } = req.query;
-  if (!/^\d+$/.test(code ?? '') || badRange(from, to)) return res.status(400).json({ message: 'اختار الموظف وفترة صحيحة' });
-  const today = localToday();
-  const [emp] = await loadEmployees({ empId: Number(code), from, to, today });
-  if (!emp) return res.status(404).json({ message: 'الموظف غير موجود' });
-  const punches = (await loadPunches({ empId: emp._id, from, to })).get(emp._id) ?? new Map();
-  res.json({ employee: publicEmployee(emp), ...analyzeEmployee(emp, punches, from, to, nowInfo()) });
+// ---------- posting actual times (APEX page 254) + reports fed from the posted rows ----------
+const listOf = (v) => (v ? String(v).split(',').filter(Boolean) : []);
+const filtersFrom = (src) => ({
+  from: src.from, to: src.to, depts: listOf(src.depts), jobs: listOf(src.jobs), emps: listOf(src.emps),
+});
+const checkRange = ({ from, to }) => {
+  if (!isValidDate(from) || !isValidDate(to) || from > to) return 'اختار فترة صحيحة';
+  if (to > localToday()) return 'لا يمكن اختيار تاريخ في المستقبل';
+  return null;
+};
+
+app.get('/api/posting/setup', wrap(async (_req, res) => {
+  res.json({ defaults: await getDefaults(), ...(await getLookups()) });
 }));
 
-app.get('/api/reports/late-absent', wrap(async (req, res) => {
-  const { from, to } = req.query;
-  if (badRange(from, to)) return res.status(400).json({ message: 'اختار فترة صحيحة' });
+app.post('/api/posting/post', wrap(async (req, res) => {
+  const f = { from: req.body.from, to: req.body.to, depts: req.body.depts, jobs: req.body.jobs, emps: req.body.emps };
+  const bad = checkRange(f);
+  if (bad) return res.status(400).json({ message: bad });
+  res.json(await postActualTimes(f));
+}));
+
+app.get('/api/posting/actual', wrap(async (req, res) => {
+  const f = filtersFrom(req.query);
+  const bad = checkRange(f);
+  if (bad) return res.status(400).json({ message: bad });
+  res.json(await getActualTimes(f));
+}));
+
+app.get('/api/posting/late-absent', wrap(async (req, res) => {
+  const f = filtersFrom(req.query);
+  const bad = checkRange(f);
+  if (bad) return res.status(400).json({ message: bad });
   const today = localToday();
-  const emps = (await loadEmployees({ from, to, today })).filter((e) => e.status === 'ACTIVE');
-  const punches = await loadPunches({ from, to });
-  const now = nowInfo();
-  res.json(emps.map((e) => ({
-    code: e.code,
-    name: e.name,
-    ...analyzeEmployee(e, punches.get(e._id) ?? new Map(), from, to, now).summary,
-  })));
+  const active = new Set((await loadEmployees({ from: today, to: today, today })).filter((e) => e.status === 'ACTIVE').map((e) => e.code));
+  res.json(summarizeLateAbsent(await getActualTimes(f), active));
 }));
 
 app.use((err, _req, res, _next) => {
