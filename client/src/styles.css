@@ -1,0 +1,28 @@
+:root { --navy: #1f3a5f; --bg: #f4f6f9; --line: #dfe4ea; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: #1b2430; }
+.nav { background: var(--navy); display: flex; gap: 8px; padding: 0 16px; }
+.nav a { color: #fff; text-decoration: none; padding: 12px; opacity: .8; }
+.nav a.active { opacity: 1; border-bottom: 3px solid #fff; }
+.page { max-width: 1000px; margin: 0 auto; padding: 20px; }
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 20px; margin-bottom: 20px; }
+h2 { margin: 0 0 12px; font-size: 20px; }
+h3 { margin: 16px 0 8px; font-size: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; align-items: start; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+input, select { padding: 8px; border: 1px solid #8a94a0; border-radius: 3px; font: inherit; background: #fff; }
+.err { color: #c0392b; font-size: 12px; font-style: normal; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row input[dir=ltr] { min-width: 240px; }
+.btn { background: var(--navy); color: #fff; border: 0; border-radius: 4px; padding: 8px 16px; font: inherit; cursor: pointer; }
+.btn:disabled { opacity: .6; cursor: wait; }
+.actions { margin-top: 16px; display: flex; gap: 12px; align-items: center; }
+.note { font-size: 14px; } .note.ok { color: #1e8449; } .note.bad { color: #c0392b; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { background: #eef1f6; text-align: right; padding: 10px; }
+td { padding: 10px; border-bottom: 1px solid var(--line); }
+.muted { color: #6b7684; text-align: center; }
+.late { color: #d68910; font-weight: 700; } .absent { color: #c0392b; font-weight: 700; } .ok { color: #1e8449; }
+.info { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 24px; margin: 0; }
+.info div { display: flex; gap: 6px; } .info dt { color: #6b7684; } .info dt::after { content: ':'; } .info dd { margin: 0; font-weight: 700; }
