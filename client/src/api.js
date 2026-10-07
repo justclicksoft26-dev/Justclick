@@ -1,10 +1,16 @@
 const BASE = import.meta.env.VITE_API_URL ?? '';
 
+const TOKEN_KEY = 'auth_token';
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
+export const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
+
 export async function api(path, { method = 'GET', body, form } = {}) {
-  const init = { method };
+  const init = { method, headers: {} };
+  const token = getToken();
+  if (token) init.headers.Authorization = `Bearer ${token}`;
   if (form) init.body = form;
   else if (body) {
-    init.headers = { 'Content-Type': 'application/json' };
+    init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
   }
   let res;
@@ -14,6 +20,10 @@ export async function api(path, { method = 'GET', body, form } = {}) {
     throw { message: 'تعذر الاتصال بالخادم' };
   }
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && token) {
+    setToken(null);
+    window.dispatchEvent(new Event('auth-expired'));
+  }
   if (!res.ok) throw { message: data.message, errors: data.errors };
   return data;
 }

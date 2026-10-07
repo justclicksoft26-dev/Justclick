@@ -4,6 +4,8 @@ import multer from 'multer';
 import ZKLib from 'node-zklib';
 import { validateEmployee, parsePunchCsv, isValidDate, localToday } from './validation.js';
 import { getActualTimes, getDefaults, getLookups, postActualTimes, summarizeLateAbsent } from './posting.js';
+import { importEmployees, templateBuffer } from './import-employees.js';
+import { currentUser, login, requireAuth } from './auth.js';
 import { Conflict, countPunches, createEmployee, deleteEmployee, loadEmployees, publicEmployee, storePunches } from './erp.js';
 
 const app = express();
@@ -17,6 +19,18 @@ const nowInfo = () => {
   return { date: localToday(), minutes: d.getHours() * 60 + d.getMinutes() };
 };
 const badRange = (f, t) => !isValidDate(f) || !isValidDate(t) || f > t;
+
+// ---------- auth (ERP: ACC_USERS, password checked by AUTH_F) ----------
+app.post('/api/auth/login', wrap(async (req, res) => {
+  const username = String(req.body.username ?? '').trim();
+  const password = String(req.body.password ?? '');
+  if (!username || !password) return res.status(400).json({ message: 'اكتب اسم المستخدم وكلمة المرور' });
+  const result = await login(username, password);
+  if (!result) return res.status(401).json({ message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+  res.json(result);
+}));
+app.get('/api/auth/me', requireAuth, currentUser);
+app.use('/api', requireAuth);
 
 // ---------- employees (ERP: EMPLOYEES, SHIFT_EMP/SHIFT_SETUP, OFFCIAL_HOLIDAY_*) ----------
 app.get('/api/employees', wrap(async (_req, res) => {
@@ -34,6 +48,18 @@ app.post('/api/employees', wrap(async (req, res) => {
     throw e;
   }
   res.status(201).json({ ok: true });
+}));
+
+app.get('/api/employees/template', wrap(async (_req, res) => {
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(Buffer.from(await templateBuffer()));
+}));
+
+app.post('/api/employees/import', upload.single('file'), wrap(async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'اختار ملف Excel أولا' });
+  const r = await importEmployees(req.file.buffer);
+  if (r.error) return res.status(400).json({ message: r.error });
+  res.json(r);
 }));
 
 app.delete('/api/employees/:code', wrap(async (req, res) => {

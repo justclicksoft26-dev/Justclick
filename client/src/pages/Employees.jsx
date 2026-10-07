@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Loading from '../Loading.jsx';
 import { api, today, dayLabel, WEEK_DAYS, STATUS_OPTIONS } from '../api.js';
 
 const empty = () => ({
@@ -19,7 +20,7 @@ function Field({ label, error, children }) {
 export default function Employees() {
   const [form, setForm] = useState(empty());
   const [errors, setErrors] = useState({});
-  const [list, setList] = useState([]);
+  const [list, setList] = useState(null);
   const [msg, setMsg] = useState('');
 
   const load = () => api('/api/employees').then(setList).catch((e) => setMsg(e.message));
@@ -116,7 +117,7 @@ export default function Employees() {
               <tr><th>الكود</th><th>الاسم</th><th>الوظيفة</th><th>الهوية</th><th>التعيين</th><th>الحالة</th><th>الدوام</th><th>الإجازة</th><th /></tr>
             </thead>
             <tbody>
-              {list.map((e) => (
+              {list?.map((e) => (
                 <tr key={e.code}>
                   <td>{e.code}</td><td>{e.name}</td><td>{e.job || '-'}</td><td>{e.nationalId || '-'}</td><td>{e.hireDate ?? '-'}</td>
                   <td>{e.statusLabel}</td><td dir="ltr">{e.shiftStart ? `${e.shiftStart} - ${e.shiftEnd}` : '-'}</td>
@@ -124,9 +125,10 @@ export default function Employees() {
                   <td><button className="btn" type="button" onClick={() => remove(e)}>حذف</button></td>
                 </tr>
               ))}
-              {!list.length && <tr><td colSpan={9} className="muted">لا يوجد موظفين</td></tr>}
+              {list && !list.length && <tr><td colSpan={9} className="muted">لا يوجد موظفين</td></tr>}
             </tbody>
           </table>
+          {!list && <Loading />}
         </div>
       </section>
     </>

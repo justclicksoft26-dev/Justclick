@@ -147,19 +147,36 @@ export async function getActualTimes(filters) {
   });
 }
 
+/**
+ * Deduction rule per employee (days):
+ *  - every 3 lates of up to 15 min count as one 30-min late (ربع يوم)
+ *  - late over 15 up to 30 min = ربع يوم, over 30 up to 120 min = نصف يوم, over 120 min = يوم غياب
+ */
+export function lateDeduction({ upTo15, upTo30, upTo120, over120 }) {
+  return Math.floor(upTo15 / 3) * 0.25 + upTo30 * 0.25 + upTo120 * 0.5 + over120;
+}
+
 /** Late/absence counts per employee, from the posted rows (employees with nothing posted are not listed). */
 export function summarizeLateAbsent(rows, activeCodes) {
   const by = new Map();
   for (const r of rows) {
     if (!activeCodes.has(r.code)) continue;
-    const s = by.get(r.code) ?? { code: r.code, name: r.name, lateCount: 0, lateMinutes: 0, absentCount: 0 };
+    const s = by.get(r.code) ?? {
+      code: r.code, name: r.name, lateCount: 0, lateMinutes: 0, absentCount: 0,
+      upTo15: 0, upTo30: 0, upTo120: 0, over120: 0, deductionDays: 0,
+    };
     if (r.status === 'تأخير') {
       s.lateCount++;
       s.lateMinutes += r.lateMinutes;
+      const m = r.lateMinutes;
+      if (m <= 15) s.upTo15++;
+      else if (m <= 30) s.upTo30++;
+      else if (m <= 120) s.upTo120++;
+      else s.over120++;
     } else if (r.status === 'غائب') {
       s.absentCount++;
     }
     by.set(r.code, s);
   }
-  return [...by.values()];
+  return [...by.values()].map((s) => ({ ...s, deductionDays: lateDeduction(s) }));
 }
