@@ -81,3 +81,19 @@ export function parsePunchCsv(text) {
   if (!rows.length) return { error: 'الملف لا يحتوي على حركات' };
   return { rows };
 }
+
+// Punches sent by the on-site agent: [{ code, ts }] with the same rules as the CSV import.
+export function validatePunches(list, max = 5000) {
+  if (!Array.isArray(list) || !list.length) return { error: 'لا توجد حركات' };
+  if (list.length > max) return { error: `الحد الأقصى ${max} حركة في الطلب` };
+  const rows = [];
+  for (const [i, p] of list.entries()) {
+    const code = String(p?.code ?? '').trim();
+    const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(String(p?.ts ?? ''));
+    if (!/^\d{1,9}$/.test(code) || !m || !isValidDate(m[1]) || +m[2] > 23 || +m[3] > 59 || +m[4] > 59) {
+      return { error: `حركة غير صحيحة رقم ${i + 1}` };
+    }
+    rows.push({ code, ts: m[0] });
+  }
+  return { rows };
+}

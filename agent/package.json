@@ -1,0 +1,16 @@
+{
+  "name": "attendance-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/agent.js",
+    "once": "node src/agent.js --once",
+    "service:install": "node src/service.js install",
+    "service:uninstall": "node src/service.js uninstall",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "node-windows": "^1.0.0-beta.8",
+    "node-zklib": "^1.3.0"
+  }
+}

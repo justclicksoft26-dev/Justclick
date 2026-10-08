@@ -1,8 +1,9 @@
+import crypto from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import ZKLib from 'node-zklib';
-import { validateEmployee, parsePunchCsv, isValidDate, localToday } from './validation.js';
+import { validateEmployee, parsePunchCsv, validatePunches, isValidDate, localToday } from './validation.js';
 import { getActualTimes, getDefaults, getLookups, postActualTimes, summarizeLateAbsent } from './posting.js';
 import { importEmployees, templateBuffer } from './import-employees.js';
 import { currentUser, login, requireAuth } from './auth.js';
@@ -10,6 +11,28 @@ import { Conflict, countPunches, createEmployee, deleteEmployee, loadEmployees, 
 
 const app = express();
 app.use(cors());
+
+// On-site agent (Windows service next to the ZK device) pushes punches here. It authenticates with a
+// shared key (AGENT_API_KEY in .env), not a user login, so this sits before requireAuth.
+// It also gets a bigger JSON limit than the rest of the API.
+const sameKey = (a, b) => {
+  const x = crypto.createHash('sha256').update(String(a)).digest();
+  const y = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(x, y);
+};
+app.post('/api/agent/punches', express.json({ limit: '2mb' }), async (req, res, next) => {
+  try {
+    const key = process.env.AGENT_API_KEY;
+    if (!key || !sameKey(req.get('x-agent-key') ?? '', key)) return res.status(401).json({ message: 'مفتاح غير صحيح' });
+    const v = validatePunches(req.body?.punches);
+    if (v.error) return res.status(400).json({ message: v.error });
+    const r = await storePunches(v.rows);
+    res.json({ received: r.received, stored: r.stored, ignored: r.received - r.stored });
+  } catch (e) {
+    next(e);
+  }
+});
+
 app.use(express.json());
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const wrap = (fn) => (req, res, next) => fn(req, res).catch(next);
