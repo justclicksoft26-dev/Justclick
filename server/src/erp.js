@@ -1,11 +1,14 @@
 import oracledb from 'oracledb';
 import { query, withTransaction } from './db.js';
-import { STATUSES } from './validation.js';
+import { STATUSES, localToday } from './validation.js';
+import { LOOKUP_TYPES } from './lookups.js';
 
 // Weekday numbering the ERP stores in OFFCIAL_HOLIDAY_M.DAY_IN_WEEK is Oracle's TO_CHAR(date,'D')
 // under the database default (NLS_TERRITORY=AMERICA): Sunday=1 ... Saturday=7. JS getDay() is 0-based.
 const toDayInWeek = (jsDay) => String(jsDay + 1);
 const fromDayInWeek = (v) => Number(v) - 1;
+
+const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
 const hhmm = (c) => `TO_CHAR(${c},'HH24:MI')`;
 const ymd = (c) => `TO_CHAR(${c},'YYYY-MM-DD')`;
@@ -176,10 +179,65 @@ export class Conflict extends Error {
   }
 }
 
+/** Next sequential employee code (highest EMP_ID + 1), offered when the user does not type one. */
+export async function nextEmployeeCode() {
+  return (await query('SELECT NVL(MAX(EMP_ID), 0) + 1 N FROM EMPLOYEES')).rows[0].N;
+}
+
+/** Reuses a SHIFT_SETUP row with the same times, otherwise adds one; returns its id. */
+async function ensureShift(exec, start, end) {
+  const FMT_T = 'HH24:MI';
+  const found = (await exec(
+    `SELECT SHIFT_ID ID FROM SHIFT_SETUP WHERE TO_CHAR(SHIFT_FROM,'${FMT_T}') = :s AND TO_CHAR(SHIFT_TO,'${FMT_T}') = :e FETCH FIRST 1 ROW ONLY`,
+    { s: start, e: end },
+  )).rows[0]?.ID;
+  if (found != null) return found;
+  const name = `دوام ${start} - ${end}`;
+  const id = (await exec('SELECT SHIFT_SEQ.NEXTVAL N FROM DUAL')).rows[0].N;
+  await exec(
+    `INSERT INTO SHIFT_SETUP (SHIFT_ID, SHIFT_NAME_AR, SHIFT_NAME_EN, SHIFT_FROM, SHIFT_TO, FLIXBLE_ALLOW)
+     VALUES (:id, :n, :n, TO_TIMESTAMP('2025-01-01 ' || :s,'YYYY-MM-DD HH24:MI'), TO_TIMESTAMP('2025-01-01 ' || :e,'YYYY-MM-DD HH24:MI'), 0)`,
+    { id, n: name, s: start, e: end },
+  );
+  return id;
+}
+
+/**
+ * Weekly off: one OFFCIAL_HOLIDAY_M row per weekday (F_DATE null), linked to the employee in _D.
+ * Replaces the employee's current weekly-off links; dated official holidays are left alone.
+ */
+async function setWeeklyOff(exec, id, days, meta) {
+  await exec(
+    `DELETE FROM OFFCIAL_HOLIDAY_D WHERE EMP_ID = :id
+        AND HOLIDAY_ID IN (SELECT HOLIDAY_ID FROM OFFCIAL_HOLIDAY_M WHERE F_DATE IS NULL AND DAY_IN_WEEK IS NOT NULL)`,
+    { id },
+  );
+  for (const day of days) {
+    const diw = toDayInWeek(day);
+    let hid = (await exec(
+      'SELECT MIN(HOLIDAY_ID) ID FROM OFFCIAL_HOLIDAY_M WHERE F_DATE IS NULL AND DAY_IN_WEEK = :d',
+      { d: diw },
+    )).rows[0]?.ID;
+    if (hid == null) {
+      hid = (await exec('SELECT OFFCIAL_HOLIDAY_M_SEQ.NEXTVAL N FROM DUAL')).rows[0].N;
+      await exec(
+        `INSERT INTO OFFCIAL_HOLIDAY_M (HOLIDAY_ID, HOLIDAY_NAME_AR, HOLIDAY_NAME_EN, DAY_IN_WEEK, COMPANY_CODE, FISCAL_YEAR, BRANCH_ID)
+         VALUES (:id, :n, :n, :d, :c, :f, :b)`,
+        { id: hid, n: `إجازة أسبوعية - ${DAY_NAMES[day]}`, d: diw, c: meta.C ?? null, f: meta.F ?? null, b: meta.B ?? 0 },
+      );
+    }
+    await exec(
+      `INSERT INTO OFFCIAL_HOLIDAY_D (HOLIDAY_ID_D, HOLIDAY_ID, EMP_ID)
+       VALUES ((SELECT NVL(MAX(HOLIDAY_ID_D),0)+1 FROM OFFCIAL_HOLIDAY_D), :h, :id)`,
+      { h: hid, id },
+    );
+  }
+}
+
 /** Registers an employee in the ERP: EMPLOYEES + job lookup + shift + weekly-off holiday rows. */
 export async function createEmployee(v) {
   return withTransaction(async ({ exec }) => {
-    const id = Number(v.code);
+    const id = v.code === '' ? (await exec('SELECT NVL(MAX(EMP_ID), 0) + 1 N FROM EMPLOYEES')).rows[0].N : Number(v.code);
     const conflicts = {};
     if ((await exec('SELECT 1 FROM EMPLOYEES WHERE EMP_ID = :id', { id })).rows.length) conflicts.code = 'كود الموظف مسجل مسبقا';
     if ((await exec('SELECT 1 FROM EMPLOYEES WHERE TRIM(ID_NO) = :n', { n: v.nid })).rows.length) conflicts.nationalId = 'رقم الهوية مسجل مسبقا';
@@ -188,8 +246,11 @@ export async function createEmployee(v) {
     const meta = (await exec('SELECT COMPANY_CODE C, FISCAL_YEAR F, BRANCH_ID B FROM HR_SYS_INFO FETCH FIRST 1 ROW ONLY')).rows[0] ?? {};
     const branch = (await exec('SELECT BRANCH_ID B FROM EMPLOYEES WHERE BRANCH_ID IS NOT NULL GROUP BY BRANCH_ID ORDER BY COUNT(*) DESC FETCH FIRST 1 ROW ONLY')).rows[0]?.B ?? meta.B ?? 0;
 
-    // job: reuse the lookup row with the same name, otherwise add one (the LOOK_UP trigger assigns the id)
-    let job = (await exec(`SELECT LOOK_UP_ID ID FROM LOOK_UP WHERE PARENT_ID = 12 AND TRIM(LOOK_UP_NAME_AR) = :j FETCH FIRST 1 ROW ONLY`, { j: v.job })).rows[0]?.ID;
+    // job: a chosen lookup id wins; otherwise reuse the lookup row with the same name or add one
+    let job = v.jobId ?? null;
+    if (job == null) {
+      job = (await exec(`SELECT LOOK_UP_ID ID FROM LOOK_UP WHERE PARENT_ID = 12 AND TRIM(LOOK_UP_NAME_AR) = :j FETCH FIRST 1 ROW ONLY`, { j: v.job })).rows[0]?.ID;
+    }
     if (job == null) {
       const r = await exec(
         `INSERT INTO LOOK_UP (PARENT_ID, LOOK_UP_NAME_AR, LOOK_UP_NAME_EN, COMPANY_CODE, FISCAL_YEAR, BRANCH_ID)
@@ -200,61 +261,28 @@ export async function createEmployee(v) {
     }
 
     await exec(
-      `INSERT INTO EMPLOYEES (EMP_ID, EMP_NAME_AR, ID_NO, JOB_CODE, HIRE_DATE, EMP_ACTIVE, END_SERVICE_FLG, END_SERVICE_DATE,
+      `INSERT INTO EMPLOYEES (EMP_ID, EMP_NAME_AR, ID_NO, JOB_CODE, DEPT_CODE, HIRE_DATE, EMP_ACTIVE, END_SERVICE_FLG, END_SERVICE_DATE,
                               COMPANY_CODE, FISCAL_YEAR, BRANCH_ID)
-       VALUES (:id, :name, :nid, :job, TO_DATE(:hd,'YYYY-MM-DD'), :active, :ended, ${v.status === 'RESIGNED' ? 'TRUNC(SYSDATE)' : 'NULL'},
+       VALUES (:id, :name, :nid, :job, :dept, TO_DATE(:hd,'YYYY-MM-DD'), :active, :ended, ${v.status === 'RESIGNED' ? 'TRUNC(SYSDATE)' : 'NULL'},
                :c, :f, :b)`,
       {
-        id, name: v.name, nid: v.nid, job, hd: v.hireDate,
+        id, name: v.name, nid: v.nid, job, dept: v.deptId ?? null, hd: v.hireDate,
         active: v.status === 'SUSPENDED' ? 'N' : 'Y', ended: v.status === 'RESIGNED' ? 'Y' : 'N',
         c: meta.C ?? null, f: meta.F ?? null, b: branch,
       },
     );
 
-    // shift: reuse a SHIFT_SETUP row with the same times, otherwise add one
-    const FMT_T = 'HH24:MI';
-    let shift = (await exec(
-      `SELECT SHIFT_ID ID FROM SHIFT_SETUP WHERE TO_CHAR(SHIFT_FROM,'${FMT_T}') = :s AND TO_CHAR(SHIFT_TO,'${FMT_T}') = :e FETCH FIRST 1 ROW ONLY`,
-      { s: v.start, e: v.end },
-    )).rows[0]?.ID;
-    if (shift == null) {
-      const name = `دوام ${v.start} - ${v.end}`;
-      shift = (await exec('SELECT SHIFT_SEQ.NEXTVAL N FROM DUAL')).rows[0].N;
-      await exec(
-        `INSERT INTO SHIFT_SETUP (SHIFT_ID, SHIFT_NAME_AR, SHIFT_NAME_EN, SHIFT_FROM, SHIFT_TO, FLIXBLE_ALLOW)
-         VALUES (:id, :n, :n, TO_TIMESTAMP('2025-01-01 ' || :s,'YYYY-MM-DD HH24:MI'), TO_TIMESTAMP('2025-01-01 ' || :e,'YYYY-MM-DD HH24:MI'), 0)`,
-        { id: shift, n: name, s: v.start, e: v.end },
-      );
-    }
+    const shift = await ensureShift(exec, v.start, v.end);
     await exec(
       `INSERT INTO SHIFT_EMP (SHIFT_EMP_SQ, SHIFT_ID, EMP_ID, SHIFT_DATE_FROM, SHIFT_DATE_TO)
        VALUES (SHIFT_EMP_SEQ.NEXTVAL, :s, :id, TO_DATE(:hd,'YYYY-MM-DD'), DATE '2099-12-31')`,
       { s: shift, id, hd: v.hireDate },
     );
 
-    // weekly off: one OFFCIAL_HOLIDAY_M row per weekday (F_DATE null), linked to the employee in _D
-    for (const day of v.weeklyOff) {
-      const diw = toDayInWeek(day);
-      let hid = (await exec(
-        'SELECT MIN(HOLIDAY_ID) ID FROM OFFCIAL_HOLIDAY_M WHERE F_DATE IS NULL AND DAY_IN_WEEK = :d',
-        { d: diw },
-      )).rows[0]?.ID;
-      if (hid == null) {
-        hid = (await exec('SELECT OFFCIAL_HOLIDAY_M_SEQ.NEXTVAL N FROM DUAL')).rows[0].N;
-        await exec(
-          `INSERT INTO OFFCIAL_HOLIDAY_M (HOLIDAY_ID, HOLIDAY_NAME_AR, HOLIDAY_NAME_EN, DAY_IN_WEEK, COMPANY_CODE, FISCAL_YEAR, BRANCH_ID)
-           VALUES (:id, :n, :n, :d, :c, :f, :b)`,
-          { id: hid, n: `إجازة أسبوعية (${diw})`, d: diw, c: meta.C ?? null, f: meta.F ?? null, b: meta.B ?? 0 },
-        );
-      }
-      await exec(
-        `INSERT INTO OFFCIAL_HOLIDAY_D (HOLIDAY_ID_D, HOLIDAY_ID, EMP_ID)
-         VALUES ((SELECT NVL(MAX(HOLIDAY_ID_D),0)+1 FROM OFFCIAL_HOLIDAY_D), :h, :id)`,
-        { h: hid, id },
-      );
-    }
+    await setWeeklyOff(exec, id, v.weeklyOff, meta);
 
     await exec('INSERT INTO ATTM_EMP_SETTING (EMP_ID, GRACE_MIN) VALUES (:id, :g)', { id, g: v.grace });
+    return { code: String(id) };
   });
 }
 
@@ -283,5 +311,104 @@ export async function deleteEmployee(code) {
     }
     await exec('DELETE FROM EMPLOYEES WHERE EMP_ID = :id', { id });
     return { found: true, blocked: [] };
+  });
+}
+
+/** One employee with everything the details screen shows or edits, or null. */
+export async function getEmployee(code) {
+  const id = Number(code);
+  const r = (await query(
+    `SELECT TRIM(EMP_NAME_EN) NAME_EN, ${ymd('BIRTH_DATE')} BIRTH, TRIM(MOBILE_1) M1, TRIM(MOBILE_2) M2, TRIM(E_MAIL) MAIL,
+            TRIM(EMP_ADDRESS) ADDR, TRIM(EMP_NOTES) NOTES, ${LOOKUP_TYPES.map((t) => `${t.col} "${t.field}"`).join(', ')}
+       FROM EMPLOYEES WHERE EMP_ID = :id`,
+    { id },
+  )).rows[0];
+  if (!r) return null;
+  const today = localToday();
+  const [base] = await loadEmployees({ empId: id, from: today, to: today, today });
+  const { holidays, vacations, shifts, _id, ...pub } = base;
+  return {
+    ...pub,
+    nameEn: r.NAME_EN ?? '', birthDate: r.BIRTH, mobile1: r.M1 ?? '', mobile2: r.M2 ?? '', email: r.MAIL ?? '',
+    address: r.ADDR ?? '', notes: r.NOTES ?? '',
+    ...Object.fromEntries(LOOKUP_TYPES.map((t) => [t.field, r[t.field]])),
+  };
+}
+
+/** Saves the details screen: EMPLOYEES row, current shift, weekly off and grace in one transaction. */
+export async function updateEmployee(code, v) {
+  const id = Number(code);
+  const today = localToday();
+  return withTransaction(async ({ exec }) => {
+    if (!(await exec('SELECT 1 FROM EMPLOYEES WHERE EMP_ID = :id', { id })).rows.length) return { found: false };
+    if ((await exec('SELECT 1 FROM EMPLOYEES WHERE TRIM(ID_NO) = :n AND EMP_ID <> :id', { n: v.nid, id })).rows.length) {
+      throw new Conflict({ nationalId: 'رقم الهوية مسجل لموظف آخر' });
+    }
+    for (const t of LOOKUP_TYPES) {
+      const val = v.lookups[t.field];
+      if (val != null && !(await exec('SELECT 1 FROM LOOK_UP WHERE PARENT_ID = :p AND LOOK_UP_ID = :v', { p: t.id, v: val })).rows.length) {
+        throw new Conflict({ [t.field]: 'القيمة المختارة غير موجودة' });
+      }
+    }
+    const meta = (await exec('SELECT COMPANY_CODE C, FISCAL_YEAR F, BRANCH_ID B FROM HR_SYS_INFO FETCH FIRST 1 ROW ONLY')).rows[0] ?? {};
+
+    const binds = {
+      id, name: v.name, nameEn: v.nameEn || null, nid: v.nid, hd: v.hireDate, bd: v.birthDate, m1: v.mobile1 || null, m2: v.mobile2 || null,
+      mail: v.email || null, addr: v.address || null, notes: v.notes || null,
+      active: v.status === 'SUSPENDED' ? 'N' : 'Y', ended: v.status === 'RESIGNED' ? 'Y' : 'N', ed: v.endDate,
+    };
+    LOOKUP_TYPES.forEach((t, i) => { binds[`l${i}`] = v.lookups[t.field]; });
+    await exec(
+      `UPDATE EMPLOYEES SET EMP_NAME_AR = :name, EMP_NAME_EN = :nameEn, ID_NO = :nid,
+              HIRE_DATE = TO_DATE(:hd,'YYYY-MM-DD'), BIRTH_DATE = TO_DATE(:bd,'YYYY-MM-DD'),
+              MOBILE_1 = :m1, MOBILE_2 = :m2, E_MAIL = :mail, EMP_ADDRESS = :addr, EMP_NOTES = :notes,
+              EMP_ACTIVE = :active, END_SERVICE_FLG = :ended, END_SERVICE_DATE = TO_DATE(:ed,'YYYY-MM-DD'),
+              ${LOOKUP_TYPES.map((t, i) => `${t.col} = :l${i}`).join(', ')}
+        WHERE EMP_ID = :id`,
+      binds,
+    );
+
+    // shift: history is kept — a change closes the current assignment yesterday and opens a new one today
+    const cur = (await exec(
+      `SELECT se.SHIFT_EMP_SQ SQ, ${ymd('se.SHIFT_DATE_FROM')} F, ${ymd('se.SHIFT_DATE_TO')} T,
+              ${hhmm('s.SHIFT_FROM')} A, ${hhmm('s.SHIFT_TO')} B
+         FROM SHIFT_EMP se JOIN SHIFT_SETUP s ON s.SHIFT_ID = se.SHIFT_ID
+        WHERE se.EMP_ID = :id ORDER BY se.SHIFT_DATE_FROM DESC`,
+      { id },
+    )).rows;
+    const live = cur.find((s) => s.F <= today && today <= s.T) ?? cur[0];
+    if (!live || live.A !== v.start || live.B !== v.end) {
+      const shift = await ensureShift(exec, v.start, v.end);
+      if (!live) {
+        await exec(
+          `INSERT INTO SHIFT_EMP (SHIFT_EMP_SQ, SHIFT_ID, EMP_ID, SHIFT_DATE_FROM, SHIFT_DATE_TO)
+           VALUES (SHIFT_EMP_SEQ.NEXTVAL, :s, :id, TO_DATE(:hd,'YYYY-MM-DD'), DATE '2099-12-31')`,
+          { s: shift, id, hd: v.hireDate },
+        );
+      } else if (live.F >= today) {
+        await exec('UPDATE SHIFT_EMP SET SHIFT_ID = :s WHERE SHIFT_EMP_SQ = :sq', { s: shift, sq: live.SQ });
+      } else {
+        const to = live.T >= today ? live.T : '2099-12-31';
+        await exec(
+          `UPDATE SHIFT_EMP SET SHIFT_DATE_TO = TO_DATE(:d,'YYYY-MM-DD') - 1
+            WHERE SHIFT_EMP_SQ = :sq AND SHIFT_DATE_TO >= TO_DATE(:d,'YYYY-MM-DD')`,
+          { d: today, sq: live.SQ },
+        );
+        await exec(
+          `INSERT INTO SHIFT_EMP (SHIFT_EMP_SQ, SHIFT_ID, EMP_ID, SHIFT_DATE_FROM, SHIFT_DATE_TO)
+           VALUES (SHIFT_EMP_SEQ.NEXTVAL, :s, :id, TO_DATE(:f,'YYYY-MM-DD'), TO_DATE(:t,'YYYY-MM-DD'))`,
+          { s: shift, id, f: today, t: to },
+        );
+      }
+    }
+
+    await setWeeklyOff(exec, id, v.weeklyOff, meta);
+    await exec(
+      `MERGE INTO ATTM_EMP_SETTING g USING (SELECT :id EMP_ID, :g GRACE_MIN FROM DUAL) s ON (g.EMP_ID = s.EMP_ID)
+       WHEN MATCHED THEN UPDATE SET g.GRACE_MIN = s.GRACE_MIN
+       WHEN NOT MATCHED THEN INSERT (EMP_ID, GRACE_MIN) VALUES (s.EMP_ID, s.GRACE_MIN)`,
+      { id, g: v.grace },
+    );
+    return { found: true };
   });
 }

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { api, getToken } from '../api.js';
+import { Alert, Badge, Icon, PageHeader, Spinner } from '../components/ui.jsx';
 
 export default function ImportEmployees() {
   const [file, setFile] = useState(null);
@@ -45,12 +46,19 @@ export default function ImportEmployees() {
 
   return (
     <>
+      <PageHeader title="رفع موظفين من Excel" subtitle="إضافة مجموعة موظفين دفعة واحدة من ملف Excel">
+        <button className="btn ghost" type="button" onClick={template}><Icon name="download" size={16} />تحميل نموذج Excel</button>
+      </PageHeader>
+
       <section className="card">
-        <h2>رفع بيانات الموظفين من Excel</h2>
-        <p className="muted-note">
-          الأعمدة: الكود، الاسم، رقم الهوية، الوظيفة، تاريخ التعيين، بداية الدوام، نهاية الدوام، الإجازة الأسبوعية (مثال: الجمعة، السبت)،
-          والاختياري: الحالة (الافتراضي نشط) والسماحية (الافتراضي 15 دقيقة). الصف الأول هو العناوين.
-        </p>
+        <div className="card-title"><Icon name="file" />الأعمدة المطلوبة</div>
+        <p className="card-sub">الصف الأول هو العناوين. الأعمدة الاختيارية: الحالة (الافتراضي نشط) والسماحية (الافتراضي 15 دقيقة).</p>
+        <div className="tag-list">
+          {['الكود', 'الاسم', 'رقم الهوية', 'الوظيفة', 'تاريخ التعيين', 'بداية الدوام', 'نهاية الدوام', 'الإجازة الأسبوعية (مثال: الجمعة، السبت)'].map((c) => <span key={c} className="tag">{c}</span>)}
+        </div>
+      </section>
+
+      <section className="card">
         <div
           className={`dropzone${drag ? ' over' : ''}`}
           onClick={() => inputRef.current.click()}
@@ -58,31 +66,34 @@ export default function ImportEmployees() {
           onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files[0]); }}
         >
+          <Icon name="upload" size={32} />
           {file ? file.name : 'اسحب ملف Excel هنا أو اضغط للاختيار'}
           <input ref={inputRef} type="file" accept=".xlsx" hidden onChange={(e) => pick(e.target.files[0])} />
         </div>
-        <div className="actions">
-          <button className="btn" disabled={!file || busy} onClick={upload}>{busy ? 'جاري الرفع...' : 'رفع وإنشاء الموظفين'}</button>
-          <button className="btn" type="button" onClick={template}>تحميل نموذج Excel</button>
+        <div className="form-actions">
+          <button className="btn" disabled={!file || busy} onClick={upload}>{busy && <Spinner />}{busy ? 'جاري الرفع...' : 'رفع وإنشاء الموظفين'}</button>
         </div>
-        {err && <p className="note bad">{err}</p>}
+        {err && <Alert tone="danger">{err}</Alert>}
         {result && (
-          <div className="note ok">
+          <Alert tone={result.failed.length ? 'warning' : 'success'}>
             تم إنشاء {result.created} موظف من {result.total}.
-            {result.failed.length > 0 && <span className="bad"> تعذر {result.failed.length}:</span>}
-          </div>
+            {result.failed.length > 0 && <> تعذر {result.failed.length}، التفاصيل بالأسفل.</>}
+          </Alert>
         )}
       </section>
+
       {result?.failed.length > 0 && (
-        <section className="card table-wrap">
-          <table>
-            <thead><tr><th>السطر</th><th>الكود</th><th>الاسم</th><th>السبب</th></tr></thead>
-            <tbody>
-              {result.failed.map((f) => (
-                <tr key={f.line}><td>{f.line}</td><td>{f.code || '-'}</td><td>{f.name || '-'}</td><td className="absent">{f.reasons.join('، ')}</td></tr>
-              ))}
-            </tbody>
-          </table>
+        <section className="card flush">
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>السطر</th><th>الكود</th><th>الاسم</th><th>السبب</th></tr></thead>
+              <tbody>
+                {result.failed.map((f) => (
+                  <tr key={f.line}><td className="mono">{f.line}</td><td className="mono">{f.code || '-'}</td><td>{f.name || '-'}</td><td><Badge tone="danger">{f.reasons.join('، ')}</Badge></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
     </>

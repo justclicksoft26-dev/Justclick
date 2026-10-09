@@ -53,3 +53,23 @@ export const dayLabel = (v) => WEEK_DAYS.find((d) => d.value === v)?.label;
 export const STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'نشط' }, { value: 'SUSPENDED', label: 'موقوف' }, { value: 'RESIGNED', label: 'مستقيل' },
 ];
+
+// Arabic-insensitive text normalisation for search (hamza forms, ta marbuta, alef maqsura, diacritics)
+export const norm = (s) =>
+  String(s ?? '')
+    .toLowerCase()
+    .replace(/[\u064B-\u0652\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي');
+
+export const STATUS_TONE = { ACTIVE: 'success', ON_LEAVE: 'info', SUSPENDED: 'warning', RESIGNED: 'neutral' };
+export const ATT_TONE = { 'حاضر': 'success', 'تأخير': 'warning', 'غائب': 'danger', 'إجازة أسبوعية': 'neutral', 'إجازة': 'info', 'مأمورية': 'info', 'إذن': 'info' };
+
+let optionsCache;
+/** Lookup values for every coded field (jobs, departments...), loaded once per session. */
+export const getOptions = (force = false) => {
+  if (!optionsCache || force) optionsCache = api('/api/lookups/options').catch((e) => { optionsCache = null; throw e; });
+  return optionsCache;
+};
+export const resetOptions = () => { optionsCache = null; };

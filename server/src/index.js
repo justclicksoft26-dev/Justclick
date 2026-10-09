@@ -3,11 +3,14 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import ZKLib from 'node-zklib';
-import { validateEmployee, parsePunchCsv, validatePunches, isValidDate, localToday } from './validation.js';
-import { getActualTimes, getDefaults, getLookups, postActualTimes, summarizeLateAbsent } from './posting.js';
+import { validateEmployee, validateEmployeeUpdate, parsePunchCsv, validatePunches, isValidDate, localToday } from './validation.js';
+import { getActualTimes, getDefaults, getLookups, getPostedRange, postActualTimes, summarizeLateAbsent } from './posting.js';
+import { getDashboard } from './dashboard.js';
+import { LOOKUP_TYPES, allOptions, createValue, deleteValue, Duplicate, listTypes, listValues, typeById, updateValue, validateLookup } from './lookups.js';
 import { importEmployees, templateBuffer } from './import-employees.js';
 import { currentUser, login, requireAuth } from './auth.js';
-import { Conflict, countPunches, createEmployee, deleteEmployee, loadEmployees, publicEmployee, storePunches } from './erp.js';
+import { Conflict, countPunches, createEmployee, deleteEmployee, getEmployee, loadEmployees, nextEmployeeCode, updateEmployee, publicEmployee, storePunches } from './erp.js';
+import { deleteHoliday, getHoliday, listHolidays, saveHoliday, validateHoliday } from './holidays.js';
 
 const app = express();
 app.use(cors());
@@ -62,15 +65,19 @@ app.get('/api/employees', wrap(async (_req, res) => {
 }));
 
 app.post('/api/employees', wrap(async (req, res) => {
-  const { errors, values } = validateEmployee(req.body);
+  const { errors, values } = validateEmployee(req.body, undefined, { autoCode: true });
   if (Object.keys(errors).length) return res.status(400).json({ errors });
   try {
-    await createEmployee(values);
+    const { code } = await createEmployee(values);
+    res.status(201).json({ ok: true, code });
   } catch (e) {
     if (e instanceof Conflict) return res.status(409).json({ errors: e.errors });
     throw e;
   }
-  res.status(201).json({ ok: true });
+}));
+
+app.get('/api/employees/next-code', wrap(async (_req, res) => {
+  res.json({ code: String(await nextEmployeeCode()) });
 }));
 
 app.get('/api/employees/template', wrap(async (_req, res) => {
@@ -85,6 +92,25 @@ app.post('/api/employees/import', upload.single('file'), wrap(async (req, res) =
   res.json(r);
 }));
 
+app.get('/api/employees/:code(\\d+)', wrap(async (req, res) => {
+  const e = await getEmployee(req.params.code);
+  if (!e) return res.status(404).json({ message: 'الموظف غير موجود' });
+  res.json(e);
+}));
+
+app.put('/api/employees/:code(\\d+)', wrap(async (req, res) => {
+  const { errors, values } = validateEmployeeUpdate(req.body, LOOKUP_TYPES.map((t) => t.field));
+  if (Object.keys(errors).length) return res.status(400).json({ errors });
+  try {
+    const r = await updateEmployee(req.params.code, values);
+    if (!r.found) return res.status(404).json({ message: 'الموظف غير موجود' });
+    res.json({ ok: true });
+  } catch (e) {
+    if (e instanceof Conflict) return res.status(409).json({ errors: e.errors });
+    throw e;
+  }
+}));
+
 app.delete('/api/employees/:code', wrap(async (req, res) => {
   if (!/^\d+$/.test(req.params.code)) return res.status(404).json({ message: 'الموظف غير موجود' });
   const r = await deleteEmployee(req.params.code);
@@ -92,6 +118,93 @@ app.delete('/api/employees/:code', wrap(async (req, res) => {
   if (r.blocked.length) {
     return res.status(409).json({ message: `لا يمكن حذف الموظف لوجود بيانات مرتبطة به في النظام (${r.blocked.join('، ')})` });
   }
+  res.json({ ok: true });
+}));
+
+// ---------- lookups / coding screens (ERP: LOOK_UP) ----------
+app.get('/api/lookups/options', wrap(async (_req, res) => {
+  res.json(await allOptions());
+}));
+
+app.get('/api/lookups', wrap(async (_req, res) => {
+  res.json(await listTypes());
+}));
+
+app.get('/api/lookups/:type', wrap(async (req, res) => {
+  const r = typeById(req.params.type) ? await listValues(req.params.type) : null;
+  if (!r) return res.status(404).json({ message: 'نوع التكويد غير موجود' });
+  res.json(r);
+}));
+
+app.post('/api/lookups/:type', wrap(async (req, res) => {
+  if (!typeById(req.params.type)) return res.status(404).json({ message: 'نوع التكويد غير موجود' });
+  const { errors, values } = validateLookup(req.body);
+  if (Object.keys(errors).length) return res.status(400).json({ errors });
+  try {
+    res.status(201).json(await createValue(req.params.type, values));
+  } catch (e) {
+    if (e instanceof Duplicate) return res.status(409).json({ errors: { nameAr: 'هذا الاسم موجود بالفعل' } });
+    throw e;
+  }
+}));
+
+app.put('/api/lookups/:type/:id', wrap(async (req, res) => {
+  if (!typeById(req.params.type) || !/^\d+$/.test(req.params.id)) return res.status(404).json({ message: 'غير موجود' });
+  const { errors, values } = validateLookup(req.body);
+  if (Object.keys(errors).length) return res.status(400).json({ errors });
+  try {
+    if (!(await updateValue(req.params.type, Number(req.params.id), values))) return res.status(404).json({ message: 'غير موجود' });
+    res.json({ ok: true });
+  } catch (e) {
+    if (e instanceof Duplicate) return res.status(409).json({ errors: { nameAr: 'هذا الاسم موجود بالفعل' } });
+    throw e;
+  }
+}));
+
+app.delete('/api/lookups/:type/:id', wrap(async (req, res) => {
+  if (!typeById(req.params.type) || !/^\d+$/.test(req.params.id)) return res.status(404).json({ message: 'غير موجود' });
+  const r = await deleteValue(req.params.type, Number(req.params.id));
+  if (!r.found) return res.status(404).json({ message: 'غير موجود' });
+  if (r.used) return res.status(409).json({ message: `لا يمكن الحذف: مستخدم في ${r.used} سجل` });
+  res.json({ ok: true });
+}));
+
+// ---------- dashboard ----------
+app.get('/api/dashboard', wrap(async (req, res) => {
+  const date = req.query.date ? String(req.query.date) : '';
+  if (date && (!isValidDate(date) || date > localToday())) return res.status(400).json({ message: 'تاريخ غير صحيح' });
+  res.json(await getDashboard(date));
+}));
+
+// ---------- official holidays (ERP: OFFCIAL_HOLIDAY_M / OFFCIAL_HOLIDAY_D, APEX page 260) ----------
+const holidayId = (req) => (/^\d+$/.test(req.params.id) ? Number(req.params.id) : null);
+
+app.get('/api/holidays', wrap(async (_req, res) => {
+  res.json(await listHolidays());
+}));
+
+app.get('/api/holidays/:id', wrap(async (req, res) => {
+  const h = holidayId(req) == null ? null : await getHoliday(holidayId(req));
+  if (!h) return res.status(404).json({ message: 'العطلة غير موجودة' });
+  res.json(h);
+}));
+
+app.post('/api/holidays', wrap(async (req, res) => {
+  const { errors, values } = validateHoliday(req.body);
+  if (Object.keys(errors).length) return res.status(400).json({ errors });
+  res.status(201).json(await saveHoliday(null, values));
+}));
+
+app.put('/api/holidays/:id', wrap(async (req, res) => {
+  const { errors, values } = validateHoliday(req.body);
+  if (Object.keys(errors).length) return res.status(400).json({ errors });
+  const r = holidayId(req) == null ? null : await saveHoliday(holidayId(req), values);
+  if (!r) return res.status(404).json({ message: 'العطلة غير موجودة' });
+  res.json(r);
+}));
+
+app.delete('/api/holidays/:id', wrap(async (req, res) => {
+  if (holidayId(req) == null || !(await deleteHoliday(holidayId(req)))) return res.status(404).json({ message: 'العطلة غير موجودة' });
   res.json({ ok: true });
 }));
 
@@ -145,7 +258,7 @@ const checkRange = ({ from, to }) => {
 };
 
 app.get('/api/posting/setup', wrap(async (_req, res) => {
-  res.json({ defaults: await getDefaults(), ...(await getLookups()) });
+  res.json({ defaults: await getDefaults(), reportRange: await getPostedRange(), ...(await getLookups()) });
 }));
 
 app.post('/api/posting/post', wrap(async (req, res) => {

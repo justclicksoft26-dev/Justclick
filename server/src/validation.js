@@ -23,8 +23,11 @@ export function toMinutes(hhmm) {
   return h * 60 + m;
 }
 
+const optId = (v) => (v === '' || v == null ? null : Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : null);
+
 // Returns { values, errors } — errors is keyed by field, one message per field.
-export function validateEmployee(body, today = localToday()) {
+// autoCode: a blank code is accepted and assigned by the server (next sequential number).
+export function validateEmployee(body, today = localToday(), { autoCode = false } = {}) {
   const errors = {};
   const code = String(body.code ?? '').trim();
   const name = String(body.name ?? '').trim();
@@ -37,10 +40,12 @@ export function validateEmployee(body, today = localToday()) {
   const weeklyOff = Array.isArray(body.weeklyOff) ? body.weeklyOff.map(Number) : [];
   const graceRaw = body.graceMin;
 
-  if (!/^\d{1,9}$/.test(code)) errors.code = 'كود الموظف لازم يكون أرقام (نفس كود جهاز البصمة)';
+  if (!(autoCode && code === '') && !/^\d{1,9}$/.test(code)) errors.code = 'كود الموظف لازم يكون أرقام (نفس كود جهاز البصمة)';
   if (!name || !/[؀-ۿ]/.test(name)) errors.name = 'يجب ادخال الاسم العربي';
   if (!/^\d{14}$/.test(nid)) errors.nationalId = 'رقم الهوية لازم يكون 14 رقم';
-  if (!job) errors.job = 'الوظيفة مطلوبة';
+  const jobId = optId(body.jobId);
+  const deptId = optId(body.deptId);
+  if (!job && jobId == null) errors.job = 'الوظيفة مطلوبة';
   if (!isValidDate(hireDate) || hireDate > today) errors.hireDate = 'تاريخ التعيين لا يكون في المستقبل';
   if (!SAVEABLE_STATUSES.includes(status)) errors.status = 'الحالة غير صحيحة';
   if (!TIME_RE.test(start) || !TIME_RE.test(end) || toMinutes(end) <= toMinutes(start)) {
@@ -54,7 +59,7 @@ export function validateEmployee(body, today = localToday()) {
 
   return {
     errors,
-    values: { code, name, nid, job, hireDate, status, start, end, weeklyOff: [...new Set(weeklyOff)].sort(), grace },
+    values: { code, name, nid, job, jobId, deptId, hireDate, status, start, end, weeklyOff: [...new Set(weeklyOff)].sort(), grace },
   };
 }
 
@@ -96,4 +101,37 @@ export function validatePunches(list, max = 5000) {
     rows.push({ code, ts: m[0] });
   }
   return { rows };
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Full employee screen (view/edit): the registration rules plus the optional personal and lookup fields. */
+export function validateEmployeeUpdate(body, lookupFields, today = localToday()) {
+  const { errors, values } = validateEmployee({ ...body, code: '1' }, today);
+  delete errors.code;
+  const text = (k, max) => String(body[k] ?? '').trim().slice(0, max);
+  const email = String(body.email ?? '').trim();
+  const mobile1 = String(body.mobile1 ?? '').trim();
+  const mobile2 = String(body.mobile2 ?? '').trim();
+  const birth = String(body.birthDate ?? '').trim();
+  const endDate = String(body.endDate ?? '').trim();
+
+  if (email && (!EMAIL_RE.test(email) || email.length > 200)) errors.email = 'البريد الإلكتروني غير صحيح';
+  if (mobile1 && !/^[0-9+\- ]{6,20}$/.test(mobile1)) errors.mobile1 = 'رقم الموبايل غير صحيح';
+  if (mobile2 && !/^[0-9+\- ]{6,20}$/.test(mobile2)) errors.mobile2 = 'رقم الموبايل غير صحيح';
+  if (birth && (!isValidDate(birth) || birth >= today)) errors.birthDate = 'تاريخ الميلاد غير صحيح';
+  if (values.status === 'RESIGNED' && endDate && (!isValidDate(endDate) || endDate < values.hireDate)) errors.endDate = 'تاريخ ترك العمل غير صحيح';
+  if (String(body.name ?? '').length > 200) errors.name = 'الاسم طويل جدا';
+
+  const lookups = {};
+  for (const f of lookupFields) lookups[f] = optId(body[f]);
+  return {
+    errors,
+    values: {
+      ...values,
+      nameEn: text('nameEn', 200), email, mobile1, mobile2, birthDate: birth || null,
+      endDate: values.status === 'RESIGNED' ? endDate || today : null,
+      address: text('address', 1000), notes: text('notes', 1000), lookups,
+    },
+  };
 }

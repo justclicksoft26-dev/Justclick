@@ -99,7 +99,7 @@ const toMin = (s) => (s ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3)) : null
 // IN_FLAG / OUT_FLAG values written by POST_IO_EMP_PRC
 const IN_LABEL = { 5: 'غائب', 7: 'بدون بصمة حضور', 111: 'حاضر', 113: 'إجازة أسبوعية', 114: 'إجازة', 115: 'مأمورية', 3: 'إذن' };
 
-function describe(r, grace) {
+export function describe(r, grace) {
   const out = { lateMinutes: 0, status: IN_LABEL[r.IN_FLAG] ?? 'حاضر' };
   if (r.IN_FLAG === 1) {
     const mins = toMin(r.IN_T) - toMin(r.SHIFT_F);
@@ -179,4 +179,17 @@ export function summarizeLateAbsent(rows, activeCodes) {
     by.set(r.code, s);
   }
   return [...by.values()].map((s) => ({ ...s, deductionDays: lateDeduction(s) }));
+}
+
+/**
+ * Posted data range for the report screens: the last 30 days ending at the newest posted day, so the
+ * default filter always lands on dates that actually have data.
+ */
+export async function getPostedRange() {
+  const r = (await query(
+    `SELECT ${ymd('MIN(FROM_IO_DATE)')} MN, ${ymd('MAX(FROM_IO_DATE)')} MX FROM EMP_IO_TIMES WHERE FROM_IO_DATE <= TRUNC(SYSDATE)`,
+  )).rows[0];
+  if (!r?.MX) return null;
+  const from = addDays(r.MX, -29);
+  return { min: r.MN, max: r.MX, from: from < r.MN ? r.MN : from, to: r.MX };
 }
