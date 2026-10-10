@@ -76,6 +76,16 @@ function HolidayForm({ id, employees, activeCount, onClose, onSaved }) {
 
   const days = form.from && form.to && form.to >= form.from ? dayCount(form.from, form.to) : null;
   const options = employees.map((e) => ({ id: e.code, name: `${e.code} - ${e.name}` }));
+  const jobs = useMemo(() => {
+    const m = new Map();
+    for (const e of employees) if (e.job) m.set(e.job, [...(m.get(e.job) ?? []), e.code]);
+    return [...m].map(([name, codes]) => ({ name, codes })).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  }, [employees]);
+  const jobOn = (j) => j.codes.every((c) => form.emps.includes(c));
+  const toggleJob = (j) => setForm({
+    ...form,
+    emps: jobOn(j) ? form.emps.filter((c) => !j.codes.includes(c)) : [...new Set([...form.emps, ...j.codes])],
+  });
 
   return (
     <Modal
@@ -122,11 +132,23 @@ function HolidayForm({ id, employees, activeCount, onClose, onSaved }) {
             </label>
             <label className={`scope-card${form.scope === 'selected' ? ' on' : ''}`}>
               <input type="radio" name="scope" checked={form.scope === 'selected'} onChange={() => setForm({ ...form, scope: 'selected' })} />
-              <span><b>موظفين محددين</b><small>اختر من القائمة</small></span>
+              <span><b>موظفين محددين</b><small>بالوظيفة أو بالاسم</small></span>
             </label>
           </div>
           {form.scope === 'selected' && (
             <div style={{ marginTop: 14 }}>
+              {jobs.length > 0 && (
+                <div className="field" style={{ marginBottom: 14 }}>
+                  <span className="field-label">حسب الوظيفة <span className="muted">(اختيار الوظيفة يحدد كل موظفيها، ويمكنك تعديل الأسماء بعدها)</span></span>
+                  <div className="chips">
+                    {jobs.map((j) => (
+                      <button key={j.name} type="button" className={`chip${jobOn(j) ? ' on' : ''}`} aria-pressed={jobOn(j)} onClick={() => toggleJob(j)}>
+                        {j.name} ({j.codes.length})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <OptionPicker options={options} value={form.emps} onChange={(v) => setForm({ ...form, emps: v })} placeholder="بحث بالاسم أو الكود" emptyHint="لم يتم تحديد أحد" />
               {errors.emps && <small className="err">{errors.emps}</small>}
             </div>

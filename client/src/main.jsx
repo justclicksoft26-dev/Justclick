@@ -22,7 +22,6 @@ const NAV = [
     { to: '/employees', label: 'الموظفين', icon: 'users' },
     { to: '/import', label: 'رفع موظفين Excel', icon: 'upload' },
     { to: '/holidays', label: 'العطلات الرسمية', icon: 'calendar' },
-    { to: '/lookups', label: 'التكويد', icon: 'file' },
   ] },
   { group: 'الحضور والانصراف', items: [
     { to: '/pull', label: 'سحب البصمة', icon: 'fingerprint' },
@@ -44,8 +43,8 @@ function Shell({ user, logout }) {
     <div className="shell">
       <aside className={`sidebar${open ? ' open' : ''}`}>
         <div className="brand">
-          <div className="brand-mark">JC</div>
-          <div><b>Just Click</b><span>الحضور والانصراف</span></div>
+          <div className="brand-mark"><Icon name="fingerprint" size={22} /></div>
+          <div><b>الحضور والانصراف</b><span>نظام الموارد البشرية</span></div>
         </div>
         <nav className="side-nav">
           {NAV.map((g) => (
@@ -67,7 +66,7 @@ function Shell({ user, logout }) {
       <div className="content">
         <div className="topbar">
           <button className="icon-btn" onClick={() => setOpen(true)} aria-label="القائمة"><Icon name="menu" /></button>
-          <b>Just Click — الحضور والانصراف</b>
+          <b>الحضور والانصراف</b>
         </div>
         <main className="page">
           <Routes>

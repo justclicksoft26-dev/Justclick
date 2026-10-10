@@ -74,7 +74,7 @@ function EmployeeForm({ onClose, onSaved }) {
           <Field label="رقم الهوية" error={errors.nationalId}>
             <input value={form.nationalId} onChange={set('nationalId')} placeholder="14 رقم" inputMode="numeric" maxLength={14} dir="ltr" />
           </Field>
-          <Field label="الوظيفة" error={errors.job} hint={opts.jobs.length ? undefined : 'أضف وظائف من شاشة التكويد أولا'}>
+          <Field label="الوظيفة" error={errors.job} hint={opts.jobs.length ? undefined : 'لا توجد وظائف مسجلة'}>
             <select value={form.jobId} onChange={set('jobId')}>
               <option value="">— اختر الوظيفة —</option>
               {opts.jobs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}

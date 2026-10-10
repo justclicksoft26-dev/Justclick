@@ -27,8 +27,8 @@ export default function Login({ onLogin }) {
     <div className="login">
       <aside className="login-art">
         <div className="brand">
-          <div className="brand-mark">JC</div>
-          <div><b>Just Click</b><span>نظام الموارد البشرية</span></div>
+          <div className="brand-mark"><Icon name="fingerprint" size={22} /></div>
+          <div><b>الحضور والانصراف</b><span>نظام الموارد البشرية</span></div>
         </div>
         <div>
           <h2>إدارة الحضور والانصراف بدقة وسهولة</h2>

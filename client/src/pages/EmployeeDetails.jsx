@@ -115,7 +115,7 @@ export default function EmployeeDetails() {
             <Field label="تاريخ ترك العمل" error={errors.endDate}><input type="date" value={form.endDate} onChange={set('endDate')} /></Field>
           )}
         </div>
-        <p className="muted-note">القيم مصدرها شاشة <Link to="/lookups">التكويد</Link>. «في إجازة» تُحسب تلقائيا من الإجازات المسجلة ولا تُختار هنا.</p>
+        <p className="muted-note">«في إجازة» تُحسب تلقائيا من الإجازات المسجلة ولا تُختار هنا.</p>
       </section>
 
       <section className="card">
