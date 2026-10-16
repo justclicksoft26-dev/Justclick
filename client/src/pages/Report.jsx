@@ -10,14 +10,14 @@ const REPORTS = {
     subtitle: 'حضور وانصراف كل موظف يوميا مقارنة بموعد الدوام',
     endpoint: 'actual',
     file: 'actual-times',
-    columns: [['code', 'الكود'], ['name', 'الاسم'], ['date', 'التاريخ'], ['dayName', 'اليوم'], ['shift', 'الدوام'], ['checkIn', 'الحضور'], ['checkOut', 'الانصراف'], ['lateMinutes', 'التأخير (د)'], ['status', 'الحالة']],
+    columns: [['code', 'الكود'], ['name', 'الاسم'], ['date', 'التاريخ'], ['dayName', 'اليوم'], ['shift', 'الدوام'], ['checkIn', 'الحضور'], ['checkOut', 'الانصراف'], ['lateMinutes', 'التأخير (د)'], ['penalty', 'الجزاء المستحق'], ['status', 'الحالة']],
   },
   late: {
     title: 'تقرير التأخيرات والغياب',
     subtitle: 'عدد التأخيرات والغيابات وأيام الخصم لكل موظف',
     endpoint: 'late-absent',
     file: 'late-absence',
-    columns: [['code', 'الكود'], ['name', 'الاسم'], ['lateCount', 'عدد التأخيرات'], ['lateMinutes', 'إجمالي دقائق التأخير'], ['upTo15', 'حتى 15 د'], ['upTo30', '15-30 د'], ['upTo120', '30 د - ساعتين'], ['over120', 'أكثر من ساعتين'], ['deductionDays', 'أيام الخصم'], ['absentCount', 'الغيابات']],
+    columns: [['code', 'الكود'], ['name', 'الاسم'], ['lateCount', 'عدد التأخيرات'], ['lateMinutes', 'إجمالي دقائق التأخير'], ['tier1', '06:15–06:35'], ['tier2', '06:36–06:55'], ['tier3', '06:56–07:30'], ['over', 'بعد 07:30'], ['deductionDays', 'أيام الخصم'], ['penalty', 'الجزاء المستحق'], ['absentCount', 'الغيابات']],
   },
 };
 

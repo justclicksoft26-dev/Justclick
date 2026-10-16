@@ -68,7 +68,7 @@ export async function templateBuffer() {
   ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00294F' } };
   ws.addRow({
     code: '101', name: 'محمد أحمد', nationalId: '29801010101010', job: 'محاسب', hireDate: '2025-01-01', status: 'نشط',
-    shiftStart: '09:00', shiftEnd: '17:00', weeklyOff: 'الجمعة، السبت', graceMin: 15,
+    shiftStart: '06:00', shiftEnd: '13:30', weeklyOff: 'الجمعة، السبت', graceMin: 14,
   });
   return wb.xlsx.writeBuffer();
 }
@@ -107,7 +107,7 @@ export async function readEmployeesSheet(buffer) {
         status: statusRaw ? (STATUS_MAP.get(norm(statusRaw)) ?? statusRaw) : 'ACTIVE',
         shiftStart: toTime(get('shiftStart')), shiftEnd: toTime(get('shiftEnd')),
         weeklyOff: toDays(get('weeklyOff')),
-        graceMin: graceRaw === '' ? 15 : graceRaw,
+        graceMin: graceRaw === '' ? 14 : graceRaw,
       },
     });
   });

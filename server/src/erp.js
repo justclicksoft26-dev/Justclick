@@ -185,7 +185,7 @@ export async function nextEmployeeCode() {
 }
 
 /** Reuses a SHIFT_SETUP row with the same times, otherwise adds one; returns its id. */
-async function ensureShift(exec, start, end) {
+export async function ensureShift(exec, start, end) {
   const FMT_T = 'HH24:MI';
   const found = (await exec(
     `SELECT SHIFT_ID ID FROM SHIFT_SETUP WHERE TO_CHAR(SHIFT_FROM,'${FMT_T}') = :s AND TO_CHAR(SHIFT_TO,'${FMT_T}') = :e FETCH FIRST 1 ROW ONLY`,

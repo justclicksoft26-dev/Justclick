@@ -1,8 +1,9 @@
 // Demo data for trying the reports.  node src/seed-demo.js          -> add 3 demo employees + 30 days of punches
-//                                    node src/seed-demo.js --clean  -> remove everything this script added
+//                                    node src/seed-demo.js --clean  -> remove everything this script added (also: npm run db:demo-clean)
 // Demo punches in ATT_EMP are tagged BRANCH_ID = 999 so they can be removed without touching real rows.
 import { getPool, query, withTransaction } from './db.js';
 import { Conflict, createEmployee, deleteEmployee } from './erp.js';
+import { postActualTimes } from './posting.js';
 import { localToday } from './validation.js';
 
 const TAG = 999;
@@ -41,7 +42,7 @@ async function seed() {
     try {
       await createEmployee({
         code: e.code, name: e.name, nid: e.nationalId, job: e.job, hireDate: hire, status: 'ACTIVE',
-        start: '09:00', end: '17:00', weeklyOff: e.weeklyOff, grace: 15,
+        start: '06:00', end: '13:30', weeklyOff: e.weeklyOff, grace: 14,
       });
       console.log(`employee ${e.code} created`);
     } catch (err) {
@@ -50,20 +51,23 @@ async function seed() {
     }
   }
 
+  // One scenario per working day, cycled with a different offset per employee so every case shows up:
+  // [minutes after the 06:00 shift start, or 'absent' / 'noout']. Covers every tier edge of the late rule.
+  const SCENARIOS = [-10, 0, 14, 15, 25, 35, 15, 36, 45, 55, 56, 70, 90, 20, 91, 120, 'absent', 'noout', 30, 40, 60, 5];
   const rows = [];
-  for (const e of EMPLOYEES) {
+  EMPLOYEES.forEach((e, ei) => {
+    let k = ei * 7;
     for (let i = DAYS; i >= 1; i--) {
       const date = addDays(today, -i);
       if (e.weeklyOff.includes(new Date(`${date}T00:00:00Z`).getUTCDay())) continue;
-      const roll = Math.random();
-      if (roll < 0.07) continue; // absent
-      const late = roll < 0.27;
-      const inMin = late ? 9 * 60 + 16 + Math.floor(Math.random() * 35) : 8 * 60 + 45 + Math.floor(Math.random() * 30);
-      rows.push({ emp: Number(e.code), t: `${date} ${hm(inMin)}`, flag: 'I' });
-      if (roll > 0.97) continue; // forgot to check out
-      rows.push({ emp: Number(e.code), t: `${date} ${hm(16 * 60 + 55 + Math.floor(Math.random() * 40))}`, flag: 'O' });
+      const sc = SCENARIOS[k++ % SCENARIOS.length];
+      if (sc === 'absent') continue;
+      const inMin = 6 * 60 + (sc === 'noout' ? 0 : sc);
+      rows.push({ emp: Number(e.code), t: `${date} ${pad(Math.floor(inMin / 60))}:${pad(inMin % 60)}:${pad(10 + (k % 40))}`, flag: 'I' });
+      if (sc === 'noout') continue; // forgot to check out
+      rows.push({ emp: Number(e.code), t: `${date} 13:${pad(35 + (k % 20))}:00`, flag: 'O' });
     }
-  }
+  });
 
   await withTransaction(async ({ exec, execMany }) => {
     const meta = (await exec('SELECT COMPANY_CODE C, FISCAL_YEAR F FROM HR_SYS_INFO FETCH FIRST 1 ROW ONLY')).rows[0] ?? {};
@@ -74,6 +78,8 @@ async function seed() {
     );
   });
   console.log(`punches inserted: ${rows.length} (${addDays(today, -DAYS)} .. ${addDays(today, -1)})`);
+  const post = await postActualTimes({ from: hire, to: addDays(today, -1), emps: EMPLOYEES.map((e) => Number(e.code)) });
+  console.log(`posted: ${post.posted}/${post.employees}`, post.skipped.length ? post.skipped : '');
 }
 
 await (process.argv.includes('--clean') ? clean() : seed());

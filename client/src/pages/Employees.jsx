@@ -6,7 +6,7 @@ import { Badge, Empty, Field, Icon, Modal, PageHeader, Spinner, Stat, WeekdayPic
 
 const empty = () => ({
   code: '', name: '', nationalId: '', jobId: '', deptId: '', hireDate: today(), status: 'ACTIVE',
-  shiftStart: '09:00', shiftEnd: '17:00', weeklyOff: [5], graceMin: 15,
+  shiftStart: '06:00', shiftEnd: '13:30', weeklyOff: [5], graceMin: 14,
 });
 
 function EmployeeForm({ onClose, onSaved }) {

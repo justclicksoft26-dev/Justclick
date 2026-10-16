@@ -6,6 +6,9 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "db:setup": "node src/setup-db.js",
+    "db:default-shift": "node src/set-default-shift.js",
+    "db:demo": "node src/seed-demo.js",
+    "db:demo-clean": "node src/seed-demo.js --clean",
     "test": "node --test"
   },
   "dependencies": {

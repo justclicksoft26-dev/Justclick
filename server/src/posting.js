@@ -143,17 +143,41 @@ export async function getActualTimes(filters) {
       shift: r.SHIFT_F ? `${r.SHIFT_F} - ${r.SHIFT_T}` : null,
       lateMinutes: d.lateMinutes,
       status: d.status,
+      penalty: d.lateMinutes ? (d.lateMinutes <= LATE_TIERS.t1Max ? 'ضمن 3 مرات = نصف يوم' : penaltyText(latePenalty(d.lateMinutes))) : '-',
     };
   });
 }
 
+/** Penalty in days -> Arabic text (0.5 = نصف يوم, 1.5 = يوم ونصف ...). */
+export function penaltyText(days) {
+  if (!days) return '-';
+  const whole = Math.floor(days);
+  const frac = days - whole;
+  const f = { 0.25: 'ربع يوم', 0.5: 'نصف يوم', 0.75: 'ثلاثة أرباع يوم' }[frac];
+  const w = whole === 0 ? '' : whole === 1 ? 'يوم' : whole === 2 ? 'يومان' : `${whole} أيام`;
+  if (!f) return w;
+  if (!w) return f;
+  return whole === 1 && frac === 0.5 ? 'يوم ونصف' : `${w} و${f}`;
+}
+
 /**
- * Deduction rule per employee (days):
- *  - every 3 lates of up to 15 min count as one 30-min late (ربع يوم)
- *  - late over 15 up to 30 min = ربع يوم, over 30 up to 120 min = نصف يوم, over 120 min = يوم غياب
+ * Late penalty rule (minutes after the shift start, shift 06:00):
+ *  - 15–35 min  (06:15–06:35): every 3 times = نصف يوم
+ *  - 36–55 min  (06:36–06:55): each time = ربع يوم
+ *  - 56–90 min  (06:56–07:30): each time = نصف يوم
+ *  - over 90 min (after 07:30): not covered by the rule, counted as يوم كامل
  */
-export function lateDeduction({ upTo15, upTo30, upTo120, over120 }) {
-  return Math.floor(upTo15 / 3) * 0.25 + upTo30 * 0.25 + upTo120 * 0.5 + over120;
+export const LATE_TIERS = { t1Max: 35, t2Max: 55, t3Max: 90 };
+
+export function latePenalty(minutes) {
+  if (minutes <= LATE_TIERS.t1Max) return 0; // grouped: see lateDeduction
+  if (minutes <= LATE_TIERS.t2Max) return 0.25;
+  if (minutes <= LATE_TIERS.t3Max) return 0.5;
+  return 1;
+}
+
+export function lateDeduction({ tier1, tier2, tier3, over }) {
+  return Math.floor(tier1 / 3) * 0.5 + tier2 * 0.25 + tier3 * 0.5 + over;
 }
 
 /** Late/absence counts per employee, from the posted rows (employees with nothing posted are not listed). */
@@ -163,22 +187,25 @@ export function summarizeLateAbsent(rows, activeCodes) {
     if (!activeCodes.has(r.code)) continue;
     const s = by.get(r.code) ?? {
       code: r.code, name: r.name, lateCount: 0, lateMinutes: 0, absentCount: 0,
-      upTo15: 0, upTo30: 0, upTo120: 0, over120: 0, deductionDays: 0,
+      tier1: 0, tier2: 0, tier3: 0, over: 0, deductionDays: 0, penalty: '-',
     };
     if (r.status === 'تأخير') {
       s.lateCount++;
       s.lateMinutes += r.lateMinutes;
       const m = r.lateMinutes;
-      if (m <= 15) s.upTo15++;
-      else if (m <= 30) s.upTo30++;
-      else if (m <= 120) s.upTo120++;
-      else s.over120++;
+      if (m <= LATE_TIERS.t1Max) s.tier1++;
+      else if (m <= LATE_TIERS.t2Max) s.tier2++;
+      else if (m <= LATE_TIERS.t3Max) s.tier3++;
+      else s.over++;
     } else if (r.status === 'غائب') {
       s.absentCount++;
     }
     by.set(r.code, s);
   }
-  return [...by.values()].map((s) => ({ ...s, deductionDays: lateDeduction(s) }));
+  return [...by.values()].map((s) => {
+    const deductionDays = lateDeduction(s);
+    return { ...s, deductionDays, penalty: penaltyText(deductionDays) };
+  });
 }
 
 /**
