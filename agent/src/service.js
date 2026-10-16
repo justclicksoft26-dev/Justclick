@@ -10,6 +10,7 @@ const svc = new Service({
   name: 'AttendanceAgent',
   description: 'Pulls punches from the ZK device and pushes them to the attendance server',
   script,
+  nodeOptions: ['--disable-warning=ExperimentalWarning'], // node:sqlite prints an experimental notice otherwise
   wait: 2, // seconds before restarting after a crash
   grow: 0.5,
   maxRestarts: 0, // keep restarting

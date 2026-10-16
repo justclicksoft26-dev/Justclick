@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ZKLib from 'node-zklib';
+import { normalizeConfig } from './config.js';
 import { errorText, normalizeLogs, sinceFilter, syncOnce } from './core.js';
 import { openStore } from './store.js';
 
@@ -25,19 +26,16 @@ function log(msg) {
 }
 
 function loadConfig() {
-  const c = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  for (const k of ['deviceIp', 'serverUrl', 'apiKey']) if (!c[k]) throw new Error(`agent.config.json: "${k}" is required`);
-  if (c.since && !/^\d{4}-\d{2}-\d{2}$/.test(c.since)) throw new Error('agent.config.json: "since" must look like 2026-10-01');
-  return { devicePort: 4370, intervalMinutes: 5, retainDays: 60, ...c, serverUrl: c.serverUrl.replace(/\/+$/, '') };
+  return normalizeConfig(JSON.parse(fs.readFileSync(configPath, 'utf8')));
 }
 
-async function readDevice(cfg) {
-  const zk = new ZKLib(cfg.deviceIp, cfg.devicePort, 10000, 4000);
+async function readDevice(dev, cfg) {
+  const zk = new ZKLib(dev.ip, dev.port, 10000, 4000);
   try {
     await zk.createSocket();
     const res = await zk.getAttendances();
     // node-zklib returns whatever it received plus `err` when the transfer broke off midway
-    if (res.err) log(`device read incomplete (${errorText(res.err)}): got ${res.data?.length ?? 0} records, the rest will come on a later pass`);
+    if (res.err) log(`device ${dev.name}: read incomplete (${errorText(res.err)}): got ${res.data?.length ?? 0} records, the rest will come on a later pass`);
     return sinceFilter(normalizeLogs(res.data), cfg.since);
   } finally {
     await zk.disconnect().catch(() => {});
@@ -56,19 +54,21 @@ async function sendBatch(cfg, punches) {
   return body;
 }
 
-/** Returns true when both halves worked (device read and server delivery). */
+/** Returns true when every device was read and delivery worked. */
 async function pass() {
   const cfg = loadConfig();
   const store = openStore(dbPath, { retainDays: cfg.retainDays });
   try {
     const r = await syncOnce({
-      fetchLogs: () => readDevice(cfg),
+      devices: cfg.devices.map((d) => ({ name: d.name, fetch: () => readDevice(d, cfg) })),
       send: (batch) => sendBatch(cfg, batch),
       store,
     });
-    if (r.deviceError) log(`device failed: ${errorText(r.deviceError)}`);
-    log(`${r.deviceError ? 'partial' : 'ok'}: read ${r.read}, new ${r.added}, sent ${r.sent}, stored ${r.stored}, waiting ${r.pending}`);
-    return !r.deviceError;
+    const failed = r.devices.filter((d) => d.error);
+    for (const d of failed) log(`device ${d.name} failed: ${errorText(d.error)}`);
+    const many = r.devices.length > 1 ? `devices ${r.devices.length - failed.length}/${r.devices.length}, ` : '';
+    log(`${failed.length ? 'partial' : 'ok'}: ${many}read ${r.read}, new ${r.added}, sent ${r.sent}, stored ${r.stored}, waiting ${r.pending}`);
+    return failed.length === 0;
   } finally {
     store.close();
   }

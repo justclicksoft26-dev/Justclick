@@ -29,25 +29,30 @@ export function errorText(e) {
 
 /**
  * One sync pass, in two independent halves:
- *   1. read the device and save new punches into the local store;
+ *   1. read every device (one after the other) and save new punches into the local store;
  *   2. send everything the server has not confirmed yet, oldest first, and mark each batch only after
  *      the server accepted it.
- * The halves do not depend on each other: if the device cannot be read the backlog is still sent, and if
- * the server is down the punches stay safe locally (a send error propagates, nothing is marked).
+ * The halves do not depend on each other: a device that cannot be read does not stop the other devices or the
+ * backlog from being sent, and if the server is down the punches stay safe locally (a send error propagates,
+ * nothing is marked).
  *
- *   fetchLogs(): Promise<[{ code, ts }]>      send(batch): Promise<{ stored }>
+ *   devices: [{ name, fetch(): Promise<[{ code, ts }]> }]   (or the older single `fetchLogs`)
+ *   send(batch): Promise<{ stored }>
  *   store: { add, pending, pendingCount, markSent, purge }
  */
-export async function syncOnce({ fetchLogs, send, store, batchSize = 1000 }) {
-  let read = 0;
-  let added = 0;
-  let deviceError = null;
-  try {
-    const logs = await fetchLogs();
-    read = logs.length;
-    added = store.add(logs);
-  } catch (e) {
-    deviceError = e;
+export async function syncOnce({ devices, fetchLogs, send, store, batchSize = 1000 }) {
+  const list = devices ?? [{ name: 'device', fetch: fetchLogs }];
+  const perDevice = [];
+  for (const d of list) {
+    const r = { name: d.name, read: 0, added: 0, error: null };
+    try {
+      const logs = await d.fetch();
+      r.read = logs.length;
+      r.added = store.add(logs);
+    } catch (e) {
+      r.error = e;
+    }
+    perDevice.push(r);
   }
 
   let sent = 0;
@@ -61,5 +66,13 @@ export async function syncOnce({ fetchLogs, send, store, batchSize = 1000 }) {
     stored += r?.stored ?? 0;
   }
   store.purge();
-  return { read, added, sent, stored, pending: store.pendingCount(), deviceError };
+  return {
+    read: perDevice.reduce((n, d) => n + d.read, 0),
+    added: perDevice.reduce((n, d) => n + d.added, 0),
+    sent,
+    stored,
+    pending: store.pendingCount(),
+    deviceError: perDevice.find((d) => d.error)?.error ?? null,
+    devices: perDevice,
+  };
 }
