@@ -3,8 +3,6 @@ const pad = (n) => String(n).padStart(2, '0');
 export const fmtTs = (d) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-const shiftTs = (ts, ms) => fmtTs(new Date(new Date(ts.replace(' ', 'T')).getTime() + ms));
-
 /** Device log entries -> [{ code, ts }], keeping only numeric user ids with a valid time. */
 export function normalizeLogs(logs) {
   const out = [];
@@ -16,23 +14,49 @@ export function normalizeLogs(logs) {
   return out;
 }
 
+/** Readable text for any thrown value (node-zklib rejects with a ZKError that is not an Error). */
+export function errorText(e) {
+  if (typeof e?.toast === 'function') {
+    const where = [e.command, e.ip].filter(Boolean).join(' ');
+    const code = e.err?.code ? ` [${e.err.code}]` : '';
+    return `${e.toast()}${code}${where ? ` (${where})` : ''}`;
+  }
+  return e?.message ?? e?.err?.message ?? String(e);
+}
+
 /**
- * One sync pass. Reads the device, sends what is newer than the last successful sync (minus an overlap
- * window, the server drops duplicates), and only then advances state.lastTs. If any batch fails the
- * error propagates and state is untouched, so the next pass simply retries.
+ * One sync pass, in two independent halves:
+ *   1. read the device and save new punches into the local store;
+ *   2. send everything the server has not confirmed yet, oldest first, and mark each batch only after
+ *      the server accepted it.
+ * The halves do not depend on each other: if the device cannot be read the backlog is still sent, and if
+ * the server is down the punches stay safe locally (a send error propagates, nothing is marked).
  *
  *   fetchLogs(): Promise<[{ code, ts }]>      send(batch): Promise<{ stored }>
+ *   store: { add, pending, pendingCount, markSent, purge }
  */
-export async function syncOnce({ fetchLogs, send, state, batchSize = 1000, overlapMs = 24 * 3600 * 1000 }) {
-  const logs = await fetchLogs();
-  const since = state.lastTs ? shiftTs(state.lastTs, -overlapMs) : '';
-  const fresh = logs.filter((l) => l.ts >= since);
+export async function syncOnce({ fetchLogs, send, store, batchSize = 1000 }) {
+  let read = 0;
+  let added = 0;
+  let deviceError = null;
+  try {
+    const logs = await fetchLogs();
+    read = logs.length;
+    added = store.add(logs);
+  } catch (e) {
+    deviceError = e;
+  }
+
+  let sent = 0;
   let stored = 0;
-  for (let i = 0; i < fresh.length; i += batchSize) {
-    const r = await send(fresh.slice(i, i + batchSize));
+  for (;;) {
+    const batch = store.pending(batchSize);
+    if (!batch.length) break;
+    const r = await send(batch);
+    store.markSent(batch);
+    sent += batch.length;
     stored += r?.stored ?? 0;
   }
-  const newest = logs.reduce((m, l) => (l.ts > m ? l.ts : m), state.lastTs ?? '');
-  if (newest) state.lastTs = newest;
-  return { read: logs.length, sent: fresh.length, stored };
+  store.purge();
+  return { read, added, sent, stored, pending: store.pendingCount(), deviceError };
 }

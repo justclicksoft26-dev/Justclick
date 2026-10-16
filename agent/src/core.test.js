@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeLogs, syncOnce } from './core.js';
+import { errorText, normalizeLogs, syncOnce } from './core.js';
+import { openStore } from './store.js';
 
 const L = (code, ts) => ({ code, ts });
+const day = (i) => `2026-10-${String(i).padStart(2, '0')} 09:00:00`;
 
 test('normalizeLogs keeps numeric ids and formats local time', () => {
   const out = normalizeLogs([
@@ -13,38 +15,84 @@ test('normalizeLogs keeps numeric ids and formats local time', () => {
   assert.deepEqual(out, [L('101', '2026-10-01 08:58:00')]);
 });
 
-test('first run sends everything in batches and records the newest timestamp', async () => {
-  const logs = Array.from({ length: 5 }, (_, i) => L('1', `2026-10-0${i + 1} 09:00:00`));
+test('first run saves everything locally and sends it in batches', async () => {
+  const store = openStore(':memory:');
+  const logs = Array.from({ length: 5 }, (_, i) => L('1', day(i + 1)));
   const batches = [];
-  const state = {};
-  const r = await syncOnce({ fetchLogs: async () => logs, send: async (b) => (batches.push(b.length), { stored: b.length }), state, batchSize: 2 });
+  const r = await syncOnce({ fetchLogs: async () => logs, send: async (b) => (batches.push(b.length), { stored: b.length }), store, batchSize: 2 });
   assert.deepEqual(batches, [2, 2, 1]);
-  assert.equal(r.stored, 5);
-  assert.equal(state.lastTs, '2026-10-05 09:00:00');
+  assert.deepEqual([r.read, r.added, r.sent, r.stored, r.pending], [5, 5, 5, 5, 0]);
 });
 
-test('later runs only send what is newer than lastTs minus the overlap', async () => {
-  const logs = [L('1', '2026-10-01 09:00:00'), L('1', '2026-10-05 09:00:00'), L('1', '2026-10-07 09:00:00')];
+test('later runs send only punches that are new', async () => {
+  const store = openStore(':memory:');
   const sent = [];
-  const state = { lastTs: '2026-10-05 09:00:00' };
-  await syncOnce({ fetchLogs: async () => logs, send: async (b) => (sent.push(...b), { stored: 0 }), state, overlapMs: 24 * 3600 * 1000 });
-  assert.deepEqual(sent.map((p) => p.ts), ['2026-10-05 09:00:00', '2026-10-07 09:00:00']);
-  assert.equal(state.lastTs, '2026-10-07 09:00:00');
+  const send = async (b) => (sent.push(...b), { stored: b.length });
+  await syncOnce({ fetchLogs: async () => [L('1', day(1)), L('1', day(2))], send, store });
+  sent.length = 0;
+  const r = await syncOnce({ fetchLogs: async () => [L('1', day(1)), L('1', day(2)), L('2', day(3))], send, store });
+  assert.deepEqual(sent, [L('2', day(3))]);
+  assert.equal(r.added, 1);
 });
 
-test('a failed batch leaves state untouched so the next pass retries', async () => {
-  const logs = [L('1', '2026-10-01 09:00:00'), L('1', '2026-10-02 09:00:00')];
-  const state = { lastTs: '2026-09-01 00:00:00' };
-  await assert.rejects(
-    syncOnce({ fetchLogs: async () => logs, send: async () => { throw new Error('offline'); }, state }),
-    /offline/,
-  );
-  assert.equal(state.lastTs, '2026-09-01 00:00:00');
+test('server down: punches stay pending locally and go out on the next pass', async () => {
+  const store = openStore(':memory:');
+  const logs = [L('1', day(1)), L('1', day(2))];
+  await assert.rejects(syncOnce({ fetchLogs: async () => logs, send: async () => { throw new Error('offline'); }, store }), /offline/);
+  assert.equal(store.pendingCount(), 2);
+  const sent = [];
+  const r = await syncOnce({ fetchLogs: async () => logs, send: async (b) => (sent.push(...b), { stored: b.length }), store });
+  assert.equal(sent.length, 2);
+  assert.equal(r.pending, 0);
+});
+
+test('a batch that fails midway only keeps the unconfirmed part pending', async () => {
+  const store = openStore(':memory:');
+  const logs = Array.from({ length: 5 }, (_, i) => L('1', day(i + 1)));
+  let calls = 0;
+  await assert.rejects(syncOnce({ fetchLogs: async () => logs, send: async () => { if (++calls === 2) throw new Error('drop'); return { stored: 2 }; }, store, batchSize: 2 }), /drop/);
+  assert.equal(store.pendingCount(), 3);
+});
+
+test('device unreachable: the backlog is still delivered and the device error is reported', async () => {
+  const store = openStore(':memory:');
+  store.add([L('1', day(1)), L('1', day(2))]);
+  const sent = [];
+  const r = await syncOnce({ fetchLogs: async () => { throw new Error('no route'); }, send: async (b) => (sent.push(...b), { stored: b.length }), store });
+  assert.equal(sent.length, 2);
+  assert.equal(r.deviceError.message, 'no route');
+  assert.equal(r.read, 0);
+});
+
+test('device wipes its log: punches already saved locally are still delivered', async () => {
+  const store = openStore(':memory:');
+  await assert.rejects(syncOnce({ fetchLogs: async () => [L('1', day(1)), L('1', day(2))], send: async () => { throw new Error('offline'); }, store }));
+  const sent = [];
+  await syncOnce({ fetchLogs: async () => [], send: async (b) => (sent.push(...b), { stored: b.length }), store });
+  assert.equal(sent.length, 2);
 });
 
 test('nothing on the device is not an error', async () => {
-  const state = {};
-  const r = await syncOnce({ fetchLogs: async () => [], send: async () => ({}), state });
-  assert.deepEqual(r, { read: 0, sent: 0, stored: 0 });
-  assert.equal(state.lastTs, undefined);
+  const store = openStore(':memory:');
+  const r = await syncOnce({ fetchLogs: async () => [], send: async () => ({}), store });
+  assert.deepEqual([r.read, r.added, r.sent, r.stored, r.pending, r.deviceError], [0, 0, 0, 0, 0, null]);
+});
+
+test('retention: old confirmed rows are purged and are not re-ingested from the device', async () => {
+  const store = openStore(':memory:', { retainDays: 10 });
+  const old = L('1', '2026-01-01 09:00:00');
+  const recent = L('1', '2026-06-01 09:00:00');
+  const send = async (b) => ({ stored: b.length });
+  await syncOnce({ fetchLogs: async () => [old, recent], send, store }); // first run takes everything
+  const sent = [];
+  const r = await syncOnce({ fetchLogs: async () => [old, recent], send: async (b) => (sent.push(...b), { stored: b.length }), store });
+  assert.deepEqual(sent, []); // the purged old row did not come back as new
+  assert.equal(r.added, 0);
+});
+
+test('errorText explains ZKError-like objects, plain errors and strings', () => {
+  const zk = { err: { message: 'connect ECONNREFUSED', code: 'ECONNREFUSED' }, command: '[TCP] CONNECT', ip: '10.0.0.5', toast: () => 'IP of the device is refused' };
+  assert.match(errorText(zk), /refused.*ECONNREFUSED.*10\.0\.0\.5/);
+  assert.equal(errorText(new Error('x')), 'x');
+  assert.equal(errorText('boom'), 'boom');
 });

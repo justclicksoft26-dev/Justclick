@@ -3,5 +3,8 @@ node_modules/
 dist/
 agent/agent.config.json
 agent/agent.state.json
+agent/agent.db
+agent/agent.db-shm
+agent/agent.db-wal
 agent/logs/
 agent/daemon/
