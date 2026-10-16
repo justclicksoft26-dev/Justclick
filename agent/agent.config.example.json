@@ -3,5 +3,6 @@
   "devicePort": 4370,
   "serverUrl": "https://your-server.example.com",
   "apiKey": "PUT-THE-SAME-VALUE-AS-AGENT_API_KEY-FROM-THE-SERVER-.env",
-  "intervalMinutes": 5
+  "intervalMinutes": 5,
+  "since": "2026-10-01"
 }

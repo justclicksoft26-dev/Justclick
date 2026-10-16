@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ZKLib from 'node-zklib';
-import { errorText, normalizeLogs, syncOnce } from './core.js';
+import { errorText, normalizeLogs, sinceFilter, syncOnce } from './core.js';
 import { openStore } from './store.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,6 +27,7 @@ function log(msg) {
 function loadConfig() {
   const c = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   for (const k of ['deviceIp', 'serverUrl', 'apiKey']) if (!c[k]) throw new Error(`agent.config.json: "${k}" is required`);
+  if (c.since && !/^\d{4}-\d{2}-\d{2}$/.test(c.since)) throw new Error('agent.config.json: "since" must look like 2026-10-01');
   return { devicePort: 4370, intervalMinutes: 5, retainDays: 60, ...c, serverUrl: c.serverUrl.replace(/\/+$/, '') };
 }
 
@@ -34,7 +35,7 @@ async function readDevice(cfg) {
   const zk = new ZKLib(cfg.deviceIp, cfg.devicePort, 10000, 4000);
   try {
     await zk.createSocket();
-    return normalizeLogs((await zk.getAttendances()).data);
+    return sinceFilter(normalizeLogs((await zk.getAttendances()).data), cfg.since);
   } finally {
     await zk.disconnect().catch(() => {});
   }

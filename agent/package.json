@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node src/agent.js",
     "once": "node src/agent.js --once",
+    "probe": "node src/probe.js",
     "service:install": "node src/service.js install",
     "service:uninstall": "node src/service.js uninstall",
     "test": "node --test"

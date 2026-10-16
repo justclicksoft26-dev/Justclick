@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { errorText, normalizeLogs, syncOnce } from './core.js';
+import { errorText, normalizeLogs, sinceFilter, syncOnce } from './core.js';
 import { openStore } from './store.js';
 
 const L = (code, ts) => ({ code, ts });
@@ -88,6 +88,12 @@ test('retention: old confirmed rows are purged and are not re-ingested from the 
   const r = await syncOnce({ fetchLogs: async () => [old, recent], send: async (b) => (sent.push(...b), { stored: b.length }), store });
   assert.deepEqual(sent, []); // the purged old row did not come back as new
   assert.equal(r.added, 0);
+});
+
+test('since drops older punches and keeps the start day', () => {
+  const logs = [L('1', '2026-09-30 23:59:59'), L('1', '2026-10-01 00:00:00'), L('1', '2026-10-02 08:00:00')];
+  assert.deepEqual(sinceFilter(logs, '2026-10-01').map((l) => l.ts), ['2026-10-01 00:00:00', '2026-10-02 08:00:00']);
+  assert.equal(sinceFilter(logs, undefined).length, 3);
 });
 
 test('errorText explains ZKError-like objects, plain errors and strings', () => {

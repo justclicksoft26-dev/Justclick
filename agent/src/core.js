@@ -14,6 +14,9 @@ export function normalizeLogs(logs) {
   return out;
 }
 
+/** Drops punches before `since` (YYYY-MM-DD). No `since` keeps everything. */
+export const sinceFilter = (logs, since) => (since ? logs.filter((l) => l.ts >= `${since} 00:00:00`) : logs);
+
 /** Readable text for any thrown value (node-zklib rejects with a ZKError that is not an Error). */
 export function errorText(e) {
   if (typeof e?.toast === 'function') {
