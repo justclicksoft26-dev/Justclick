@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite'; // built into Node 22.5+, nothing to compile or install
 
 const pad = (n) => String(n).padStart(2, '0');
 const fmtTs = (d) =>
@@ -14,8 +14,8 @@ const shiftDays = (ts, days) => fmtTs(new Date(new Date(ts.replace(' ', 'T')).ge
  * row can never come back from the device as "new".
  */
 export function openStore(file, { retainDays = 60 } = {}) {
-  const db = new Database(file);
-  db.pragma('journal_mode = WAL');
+  const db = new DatabaseSync(file);
+  db.exec('PRAGMA journal_mode = WAL');
   db.exec(`CREATE TABLE IF NOT EXISTS punches (
     code TEXT NOT NULL,
     ts   TEXT NOT NULL,
@@ -31,29 +31,40 @@ export function openStore(file, { retainDays = 60 } = {}) {
   const mark = db.prepare('UPDATE punches SET sent = 1 WHERE code = ? AND ts = ?');
   const purge = db.prepare('DELETE FROM punches WHERE sent = 1 AND ts < ?');
 
-  const addTx = db.transaction((logs, floor) => {
-    let added = 0;
-    for (const l of logs) if (!floor || l.ts >= floor) added += insert.run(l.code, l.ts).changes;
-    return added;
-  });
-  const markTx = db.transaction((batch) => {
-    for (const p of batch) mark.run(p.code, p.ts);
-  });
+  const inTransaction = (fn) => {
+    db.exec('BEGIN');
+    try {
+      const r = fn();
+      db.exec('COMMIT');
+      return r;
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  };
 
   return {
     /** Saves device punches that are not stored yet. Returns how many were new. */
     add(logs) {
       const top = newest.get().T;
-      return addTx(logs, top ? shiftDays(top, retainDays) : '');
+      const floor = top ? shiftDays(top, retainDays) : '';
+      return inTransaction(() => {
+        let added = 0;
+        for (const l of logs) if (!floor || l.ts >= floor) added += Number(insert.run(l.code, l.ts).changes);
+        return added;
+      });
     },
     /** Oldest punches the server has not confirmed yet. */
-    pending: (limit) => pending.all(limit),
-    pendingCount: () => pendingCount.get().C,
-    markSent: (batch) => markTx(batch),
+    pending: (limit) => pending.all(limit).map((r) => ({ code: r.code, ts: r.ts })),
+    pendingCount: () => Number(pendingCount.get().C),
+    markSent: (batch) =>
+      inTransaction(() => {
+        for (const p of batch) mark.run(p.code, p.ts);
+      }),
     /** Drops old confirmed rows. Returns how many were removed. */
     purge() {
       const top = newest.get().T;
-      return top ? purge.run(shiftDays(top, retainDays)).changes : 0;
+      return top ? Number(purge.run(shiftDays(top, retainDays)).changes) : 0;
     },
     close: () => db.close(),
   };

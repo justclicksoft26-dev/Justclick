@@ -10,8 +10,8 @@
     "service:uninstall": "node src/service.js uninstall",
     "test": "node --test"
   },
+  "engines": { "node": ">=22.5" },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
     "node-windows": "^1.0.0-beta.8",
     "node-zklib": "^1.3.0"
   }

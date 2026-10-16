@@ -35,7 +35,10 @@ async function readDevice(cfg) {
   const zk = new ZKLib(cfg.deviceIp, cfg.devicePort, 10000, 4000);
   try {
     await zk.createSocket();
-    return sinceFilter(normalizeLogs((await zk.getAttendances()).data), cfg.since);
+    const res = await zk.getAttendances();
+    // node-zklib returns whatever it received plus `err` when the transfer broke off midway
+    if (res.err) log(`device read incomplete (${errorText(res.err)}): got ${res.data?.length ?? 0} records, the rest will come on a later pass`);
+    return sinceFilter(normalizeLogs(res.data), cfg.since);
   } finally {
     await zk.disconnect().catch(() => {});
   }
