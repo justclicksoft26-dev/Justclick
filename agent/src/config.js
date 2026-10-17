@@ -9,13 +9,16 @@
  *
  * Optional:
  *   "agentName": "branch-1"          sent to the server with every request (default: the computer name)
+ *   "apiPath": "/attendance/punches" where the punches are posted, after serverUrl (default "/api/agent/punches")
+ *       ORDS example: serverUrl "https://host/ords/justclick", apiPath "/attendance/punches"
  *   "schedule": { "start": "06:00", "end": "13:30", "idleIntervalMinutes": 60 }
  *       inside the window the agent pulls every intervalMinutes; outside it only every idleIntervalMinutes
  *       (default 60), and it always wakes up at the start and just after the end of the window.
  */
 import os from 'node:os';
 
-const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+export const DEFAULT_API_PATH = '/api/agent/punches';
+const HHMM =/^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 const toMin = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
 
 /** Minutes to wait before the next pass. `now` is a Date in the computer's local time. */
@@ -69,5 +72,7 @@ export function normalizeConfig(c) {
     schedule = { start, end, idleIntervalMinutes: idle };
   }
   const agentName = String(c.agentName ?? '').trim().slice(0, 60) || os.hostname();
-  return { intervalMinutes: 5, retainDays: 60, ...c, agentName, schedule, devices: list, serverUrl: c.serverUrl.replace(/\/+$/, '') };
+  // where on the server the punches are posted: the Node server's path by default, or e.g. "/attendance/punches" for ORDS
+  const apiPath = `/${String(c.apiPath ?? DEFAULT_API_PATH).trim().replace(/^\/+/, '')}`;
+  return { intervalMinutes: 5, retainDays: 60, ...c, apiPath, agentName, schedule, devices: list, serverUrl: c.serverUrl.replace(/\/+$/, '') };
 }

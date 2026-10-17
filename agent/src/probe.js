@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ZKLib from 'node-zklib';
-import { normalizeConfig } from './config.js';
+import { DEFAULT_API_PATH, normalizeConfig } from './config.js';
 import { errorText, normalizeLogs } from './core.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -61,26 +61,31 @@ for (const dev of cfg.devices) {
 // ---- server (no punches are sent: an empty list is rejected with 400 after the key check) ----
 console.log('\n--- server ---');
 const base = cfg.serverUrl;
-try {
-  const r = await fetch(`${base}/api/auth/me`, { signal: AbortSignal.timeout(15_000) });
-  if (r.status === 401) ok('server reachable');
-  else info(`server answered ${r.status} on /api/auth/me (expected 401)`);
-} catch (e) {
-  failed = true;
-  bad(`server unreachable: ${e.cause?.code ?? e.message}`);
+if (cfg.apiPath === DEFAULT_API_PATH) {
+  try {
+    const r = await fetch(`${base}/api/auth/me`, { signal: AbortSignal.timeout(15_000) });
+    if (r.status === 401) ok('server reachable');
+    else info(`server answered ${r.status} on /api/auth/me (expected 401)`);
+  } catch (e) {
+    failed = true;
+    bad(`server unreachable: ${e.cause?.code ?? e.message}`);
+  }
 }
 try {
-  const r = await fetch(`${base}/api/agent/punches`, {
+  const r = await fetch(`${base}${cfg.apiPath}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Agent-Key': cfg.apiKey },
     body: JSON.stringify({ punches: [] }),
     signal: AbortSignal.timeout(15_000),
   });
-  if (r.status === 400) ok('apiKey accepted by the server');
+  if (r.status === 400) ok(`server reachable at ${cfg.apiPath} and the apiKey is accepted`);
   else if (r.status === 401) {
     failed = true;
-    bad('apiKey rejected (must equal AGENT_API_KEY in the server .env, and the server must be restarted after adding it)');
-  } else info(`unexpected answer ${r.status} from /api/agent/punches`);
+    bad('apiKey rejected (it must match the server: AGENT_API_KEY in its .env, or the key registered in ATTM_API_KEY for ORDS)');
+  } else if (r.status === 404) {
+    failed = true;
+    bad(`nothing at ${base}${cfg.apiPath} (404): check serverUrl and apiPath`);
+  } else info(`unexpected answer ${r.status} from ${cfg.apiPath}`);
 } catch (e) {
   failed = true;
   bad(`apiKey check failed: ${e.cause?.code ?? e.message}`);

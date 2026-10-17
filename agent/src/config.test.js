@@ -79,3 +79,9 @@ test('bad schedules and the agent name', () => {
   assert.equal(sched({ agentName: 'branch-1' }).agentName, 'branch-1');
   assert.ok(sched().agentName.length > 0);
 });
+
+test('apiPath: default is the Node server path; a custom path gets one leading slash', () => {
+  assert.equal(normalizeConfig({ ...base, deviceIp: '10.0.0.1' }).apiPath, '/api/agent/punches');
+  assert.equal(normalizeConfig({ ...base, deviceIp: '10.0.0.1', apiPath: 'attendance/punches' }).apiPath, '/attendance/punches');
+  assert.equal(normalizeConfig({ ...base, deviceIp: '10.0.0.1', apiPath: '/attendance/punches' }).apiPath, '/attendance/punches');
+});

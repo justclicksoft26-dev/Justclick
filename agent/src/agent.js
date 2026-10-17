@@ -43,7 +43,7 @@ async function readDevice(dev, cfg) {
 }
 
 async function sendBatch(cfg, punches) {
-  const res = await fetch(`${cfg.serverUrl}/api/agent/punches`, {
+  const res = await fetch(`${cfg.serverUrl}${cfg.apiPath}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Agent-Key': cfg.apiKey, 'X-Agent-Name': encodeURIComponent(cfg.agentName) },
     body: JSON.stringify({ punches }),
