@@ -34,3 +34,48 @@ test('bad configs are rejected with a clear message', () => {
   assert.throws(() => normalizeConfig({ ...base, devices: [{ ip: '1.1.1.1' }, { ip: '1.1.1.1' }] }), /listed twice/);
   assert.throws(() => normalizeConfig({ ...base, deviceIp: '1.1.1.1', since: '1/10/2026' }), /"since"/);
 });
+
+import { nextWaitMinutes } from './config.js';
+
+const sched = (extra = {}) => normalizeConfig({ ...base, deviceIp: '10.0.0.1', schedule: { start: '06:00', end: '13:30', idleIntervalMinutes: 60 }, ...extra });
+const at = (c, h, m, s = 0) => nextWaitMinutes(c, new Date(2026, 9, 17, h, m, s));
+
+test('without a schedule the pull interval is used all day', () => {
+  const c = normalizeConfig({ ...base, deviceIp: '10.0.0.1', intervalMinutes: 7 });
+  assert.equal(c.schedule, null);
+  assert.equal(at(c, 3, 0), 7);
+  assert.equal(at(c, 9, 0), 7);
+});
+
+test('schedule: inside the window it pulls every intervalMinutes, outside every idleIntervalMinutes', () => {
+  const c = sched();
+  assert.equal(at(c, 8, 0), 5);
+  assert.equal(at(c, 6, 0), 5);
+  assert.equal(at(c, 14, 0), 60);
+  assert.equal(at(c, 3, 0), 60);
+});
+
+test('schedule: it wakes up for the start of the window and one minute after its end', () => {
+  const c = sched();
+  assert.equal(at(c, 5, 30), 30); // 30 min to the start, not 60
+  assert.equal(at(c, 5, 59), 1);
+  assert.equal(at(c, 13, 28), 3); // one last pass right after 13:30
+  assert.equal(at(c, 13, 30), 60);
+});
+
+test('schedule: a window that crosses midnight works', () => {
+  const c = sched({ schedule: { start: '22:00', end: '06:00', idleIntervalMinutes: 30 } });
+  assert.equal(at(c, 23, 0), 5);
+  assert.equal(at(c, 2, 0), 5);
+  assert.equal(at(c, 12, 0), 30);
+  assert.equal(at(c, 21, 50), 10);
+});
+
+test('bad schedules and the agent name', () => {
+  assert.throws(() => sched({ schedule: { start: '6:00', end: '13:30' } }), /"schedule"/);
+  assert.throws(() => sched({ schedule: { start: '06:00', end: '06:00' } }), /"schedule"/);
+  assert.throws(() => sched({ schedule: { start: '06:00', end: '13:30', idleIntervalMinutes: 0 } }), /idleIntervalMinutes/);
+  assert.equal(sched({ schedule: { start: '06:00', end: '13:30' } }).schedule.idleIntervalMinutes, 60);
+  assert.equal(sched({ agentName: 'branch-1' }).agentName, 'branch-1');
+  assert.ok(sched().agentName.length > 0);
+});

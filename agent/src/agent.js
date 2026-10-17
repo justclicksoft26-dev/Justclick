@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ZKLib from 'node-zklib';
-import { normalizeConfig } from './config.js';
+import { nextWaitMinutes, normalizeConfig } from './config.js';
 import { errorText, normalizeLogs, sinceFilter, syncOnce } from './core.js';
 import { openStore } from './store.js';
 
@@ -45,7 +45,7 @@ async function readDevice(dev, cfg) {
 async function sendBatch(cfg, punches) {
   const res = await fetch(`${cfg.serverUrl}/api/agent/punches`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Agent-Key': cfg.apiKey },
+    headers: { 'Content-Type': 'application/json', 'X-Agent-Key': cfg.apiKey, 'X-Agent-Name': encodeURIComponent(cfg.agentName) },
     body: JSON.stringify({ punches }),
     signal: AbortSignal.timeout(60_000),
   });
@@ -55,8 +55,7 @@ async function sendBatch(cfg, punches) {
 }
 
 /** Returns true when every device was read and delivery worked. */
-async function pass() {
-  const cfg = loadConfig();
+async function pass(cfg = loadConfig()) {
   const store = openStore(dbPath, { retainDays: cfg.retainDays });
   try {
     const r = await syncOnce({
@@ -88,8 +87,13 @@ if (process.argv.includes('--once')) {
   const loop = async () => {
     let wait = 5;
     try {
-      wait = loadConfig().intervalMinutes;
-      await pass();
+      const cfg = loadConfig();
+      wait = nextWaitMinutes(cfg);
+      await pass(cfg);
+      wait = nextWaitMinutes(cfg);
+      if (cfg.schedule && wait > cfg.intervalMinutes) {
+        log(`outside ${cfg.schedule.start}-${cfg.schedule.end}: next pass in ${wait} min`);
+      }
     } catch (e) {
       log(`failed: ${errorText(e)} (punches stay saved locally, will retry)`);
     }
