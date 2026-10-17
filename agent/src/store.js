@@ -15,6 +15,7 @@ const shiftDays = (ts, days) => fmtTs(new Date(new Date(ts.replace(' ', 'T')).ge
  */
 export function openStore(file, { retainDays = 60 } = {}) {
   const db = new DatabaseSync(file);
+  db.exec('PRAGMA busy_timeout = 15000'); // set first: two runs at once (service + a manual run) wait for each other instead of failing
   db.exec('PRAGMA journal_mode = WAL');
   db.exec(`CREATE TABLE IF NOT EXISTS punches (
     code TEXT NOT NULL,

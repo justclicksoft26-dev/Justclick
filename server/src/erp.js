@@ -119,6 +119,21 @@ export async function storePunches(rows) {
   const days = list.map((g) => g.day).sort();
   const emps = [...new Set(list.map((g) => g.emp))];
 
+  // Two requests carrying the same employee/day (two agents, a retry, a manual run) can both decide to INSERT.
+  // The unique key (EMP_ID, ATT_DATE, ATT_FLAG) rejects the loser (ORA-00001, or ORA-00060 on a deadlock), and
+  // nothing wrong is stored. Running the transaction again sees the winner's rows and just updates or skips.
+  const RACE = new Set([1, 60]);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await saveGroups(list, days, emps, rows.length);
+    } catch (e) {
+      if (!RACE.has(e?.errorNum) || attempt >= 4) throw e;
+      await new Promise((r) => setTimeout(r, 40 * (attempt + 1) + Math.random() * 60));
+    }
+  }
+}
+
+function saveGroups(list, days, emps, received) {
   return withTransaction(async ({ exec, execMany }) => {
     const meta = (await exec('SELECT COMPANY_CODE C, FISCAL_YEAR F, BRANCH_ID B FROM HR_SYS_INFO FETCH FIRST 1 ROW ONLY')).rows[0] ?? {};
     const existing = new Map();
@@ -168,7 +183,7 @@ export async function storePunches(rows) {
         { bindDefs: { t: { type: oracledb.STRING, maxSize: 19 }, emp: { type: oracledb.NUMBER }, day: { type: oracledb.STRING, maxSize: 10 }, flag: { type: oracledb.STRING, maxSize: 1 } } },
       );
     }
-    return { received: rows.length, stored: inserts.length + updates.length };
+    return { received, stored: inserts.length + updates.length };
   });
 }
 
