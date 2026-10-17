@@ -1,4 +1,3 @@
-import oracledb from 'oracledb';
 import { query, withTransaction } from './db.js';
 
 // "ترحيل المواعيد الفعلية" (APEX page 254): turns raw punches (ATT_EMP) into one actual-times row per
@@ -56,102 +55,43 @@ const shiftGap = (msg) => {
 };
 
 /**
- * Default shift (optional). POST_IO_EMP_PRC stops for an employee who has no shift on some date in the range
- * ("has no determined shift in ..."). When DEFAULT_SHIFT_ID is set in .env (a SHIFT_ID from SHIFT_SETUP, for
- * example the 06:00-13:30 one), those uncovered days are posted with that shift. SHIFT_EMP is only touched for
- * the duration of the posting: the temporary rows are removed again, so the employee's real shift
- * assignments never change. Without DEFAULT_SHIFT_ID nothing changes: such employees are reported and skipped.
- */
-export function defaultShiftId() {
-  const n = Number(process.env.DEFAULT_SHIFT_ID);
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
-
-/** Sub-ranges of [from, to] not covered by any of the rows [{ from, to }] (all YYYY-MM-DD, inclusive). */
-export function uncovered(from, to, rows) {
-  const gaps = [];
-  let cursor = from;
-  for (const r of [...rows].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0))) {
-    if (r.to < cursor) continue;
-    if (r.from > cursor) gaps.push({ from: cursor, to: r.from <= to ? addDays(r.from, -1) : to });
-    const next = addDays(r.to, 1);
-    if (next > cursor) cursor = next;
-    if (cursor > to) return gaps;
-  }
-  if (cursor <= to) gaps.push({ from: cursor, to });
-  return gaps;
-}
-
-/**
- * Posts each employee in its own savepoint: one failing employee is rolled back and reported without stopping
- * the others. `exec` runs inside one transaction owned by the caller.
- */
-export async function postEmployees(exec, emps, { from, to, x, defaultShift = null }) {
-  const posted = [];
-  const skipped = [];
-  const defaulted = [];
-  for (const e of emps) {
-    const start = e.hire && e.hire > from ? e.hire : from;
-    const end = e.ended && addDays(e.ended, -1) < to ? addDays(e.ended, -1) : to;
-    if (start > end) {
-      skipped.push({ id: e.id, reason: 'خارج فترة الخدمة' });
-      continue;
-    }
-    await exec('SAVEPOINT emp_sp');
-    try {
-      await exec(
-        `DELETE FROM EMP_IO_TIMES WHERE EMP_ID = :e AND FROM_IO_DATE BETWEEN TO_DATE(:f,'YYYY-MM-DD') AND TO_DATE(:t,'YYYY-MM-DD')`,
-        { e: e.id, f: start, t: end },
-      );
-      const temp = [];
-      let gaps = [];
-      if (defaultShift) {
-        const { rows } = await exec(
-          `SELECT ${ymd('SHIFT_DATE_FROM')} F, ${ymd('SHIFT_DATE_TO')} T FROM SHIFT_EMP
-            WHERE EMP_ID = :e AND SHIFT_DATE_TO >= TO_DATE(:f,'YYYY-MM-DD') AND SHIFT_DATE_FROM <= TO_DATE(:t,'YYYY-MM-DD')`,
-          { e: e.id, f: start, t: end },
-        );
-        gaps = uncovered(start, end, rows.map((r) => ({ from: r.F, to: r.T })));
-        for (const g of gaps) {
-          const r = await exec(
-            `INSERT INTO SHIFT_EMP (SHIFT_EMP_SQ, SHIFT_ID, EMP_ID, SHIFT_DATE_FROM, SHIFT_DATE_TO)
-             VALUES (SHIFT_EMP_SEQ.NEXTVAL, :s, :e, TO_DATE(:f,'YYYY-MM-DD'), TO_DATE(:t,'YYYY-MM-DD'))
-             RETURNING SHIFT_EMP_SQ INTO :sq`,
-            { s: defaultShift, e: e.id, f: g.from, t: g.to, sq: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER } },
-          );
-          temp.push(r.outBinds.sq[0]);
-        }
-      }
-      await exec(
-        `BEGIN POST_IO_EMP_PRC(:e, TO_DATE(:f,'YYYY-MM-DD'), TO_DATE(:t,'YYYY-MM-DD'), :x); END;`,
-        { e: e.id, f: start, t: end, x },
-      );
-      if (temp.length) {
-        const binds = Object.fromEntries(temp.map((sq, i) => [`q${i}`, sq]));
-        await exec(`DELETE FROM SHIFT_EMP WHERE SHIFT_EMP_SQ IN (${temp.map((_, i) => `:q${i}`).join(',')})`, binds);
-        defaulted.push({ id: e.id, ranges: gaps });
-      }
-      posted.push(e.id);
-    } catch (err) {
-      await exec('ROLLBACK TO emp_sp'); // also undoes the temporary shift rows
-      skipped.push({ id: e.id, reason: shiftGap(err.message) });
-    }
-  }
-  return { employees: emps.length, posted: posted.length, skipped, defaulted };
-}
-
-/**
  * Same steps as the APEX process: per employee delete the period's EMP_IO_TIMES rows, then call
  * POST_IO_EMP_PRC. Differences: an employee failing (usually "no shift on a date") is rolled back and
- * reported instead of failing the whole run, the range starts at the hire date, and (optionally) days with no
- * shift use DEFAULT_SHIFT_ID.
+ * reported instead of failing the whole run, and the range starts at the hire date.
  */
 export async function postActualTimes(filters) {
   const { from, to } = filters;
   const emps = await selectEmployees(filters);
   const hr = (await query('SELECT MAX_OUT_IN_DAY X FROM HR_SYS_INFO FETCH FIRST 1 ROW ONLY')).rows[0];
-  const defaultShift = defaultShiftId();
-  return withTransaction(({ exec }) => postEmployees(exec, emps, { from, to, x: hr.X, defaultShift }));
+
+  return withTransaction(async ({ exec }) => {
+    const posted = [];
+    const skipped = [];
+    for (const e of emps) {
+      const start = e.hire && e.hire > from ? e.hire : from;
+      const end = e.ended && addDays(e.ended, -1) < to ? addDays(e.ended, -1) : to;
+      if (start > end) {
+        skipped.push({ id: e.id, reason: 'خارج فترة الخدمة' });
+        continue;
+      }
+      await exec('SAVEPOINT emp_sp');
+      try {
+        await exec(
+          `DELETE FROM EMP_IO_TIMES WHERE EMP_ID = :e AND FROM_IO_DATE BETWEEN TO_DATE(:f,'YYYY-MM-DD') AND TO_DATE(:t,'YYYY-MM-DD')`,
+          { e: e.id, f: start, t: end },
+        );
+        await exec(
+          `BEGIN POST_IO_EMP_PRC(:e, TO_DATE(:f,'YYYY-MM-DD'), TO_DATE(:t,'YYYY-MM-DD'), :x); END;`,
+          { e: e.id, f: start, t: end, x: hr.X },
+        );
+        posted.push(e.id);
+      } catch (err) {
+        await exec('ROLLBACK TO emp_sp');
+        skipped.push({ id: e.id, reason: shiftGap(err.message) });
+      }
+    }
+    return { employees: emps.length, posted: posted.length, skipped };
+  });
 }
 
 const toMin = (s) => (s ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3)) : null);

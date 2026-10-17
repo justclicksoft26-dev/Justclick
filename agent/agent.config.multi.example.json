@@ -9,5 +9,5 @@
   "apiKey": "PUT-THE-SAME-VALUE-AS-AGENT_API_KEY-FROM-THE-SERVER-.env",
   "intervalMinutes": 5,
   "since": "2026-10-01",
-  "schedule": { "start": "05:30", "end": "14:30", "idleIntervalMinutes": 60 }
+  "schedule": { "start": "06:00", "end": "15:00", "idleIntervalMinutes": 60 }
 }
