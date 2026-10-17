@@ -119,6 +119,16 @@ export default function Posting() {
                 {result.skipped.map((s) => <li key={s.id}>{s.id} - {names[s.id] ?? ''}: {s.reason}</li>)}
               </ul>
             )}
+            {result.defaulted?.length > 0 && (
+              <>
+                <div>تم استخدام الوردية الافتراضية للأيام التي ليس لها وردية عند:</div>
+                <ul>
+                  {result.defaulted.map((d) => (
+                    <li key={d.id}>{d.id} - {names[d.id] ?? ''}: {d.ranges.map((r) => (r.from === r.to ? r.from : `${r.from} إلى ${r.to}`)).join('، ')}</li>
+                  ))}
+                </ul>
+              </>
+            )}
           </Alert>
         )}
       </form>
