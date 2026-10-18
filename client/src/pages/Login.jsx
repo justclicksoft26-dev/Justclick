@@ -27,12 +27,8 @@ export default function Login({ onLogin }) {
     <div className="login">
       <aside className="login-art">
         <div className="brand">
-          <div className="brand-mark"><Icon name="fingerprint" size={22} /></div>
+          <div className="brand-mark"><img src="/logo.png" alt="شركة الأفق التعليمية" /></div>
           <div><b>الحضور والانصراف</b><span>نظام الموارد البشرية</span></div>
-        </div>
-        <div>
-          <h2>إدارة الحضور والانصراف بدقة وسهولة</h2>
-          <p>ربط مباشر مع أجهزة البصمة، وترحيل المواعيد الفعلية، وتقارير التأخير والغياب في مكان واحد.</p>
         </div>
         <ul>
           <li><Icon name="fingerprint" />سحب البصمات من الجهاز تلقائيا</li>
