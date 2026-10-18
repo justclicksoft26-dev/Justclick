@@ -67,7 +67,7 @@ export default function Report({ kind }) {
     setQ('');
     Promise.all([api('/api/posting/setup'), api('/api/employees')])
       .then(([s, list]) => {
-        const r = s.reportRange ?? { from: s.defaults.from, to: s.defaults.to, min: s.defaults.from, max: s.defaults.to };
+        const r = { from: s.defaults.from, to: s.defaults.to, max: s.defaults.to };
         setRange(r);
         setEmployees(list);
         setFrom(r.from);
@@ -117,11 +117,11 @@ export default function Report({ kind }) {
       <form className="filterbar" onSubmit={submit}>
         <label className="fb-field">
           <span>من</span>
-          <input type="date" value={from} min={range?.min} max={range?.max} onChange={(e) => setFrom(e.target.value)} />
+          <input type="date" value={from} max={range?.max} onChange={(e) => setFrom(e.target.value)} />
         </label>
         <label className="fb-field">
           <span>إلى</span>
-          <input type="date" value={to} min={range?.min} max={range?.max} onChange={(e) => setTo(e.target.value)} />
+          <input type="date" value={to} max={range?.max} onChange={(e) => setTo(e.target.value)} />
         </label>
         <button type="button" className={`btn ghost${showEmps ? ' pressed' : ''}`} onClick={() => setShowEmps((v) => !v)} aria-expanded={showEmps}>
           <Icon name="users" size={16} />{emps.length ? `${emps.length} موظف محدد` : 'كل الموظفين'}

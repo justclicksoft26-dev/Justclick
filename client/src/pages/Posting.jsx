@@ -33,7 +33,10 @@ export default function Posting() {
   }, []);
 
   const names = Object.fromEntries(employees.map((e) => [e.code, e.name]));
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const set = (k) => (e) => {
+    const v = e.target.value;
+    setF((x) => ({ ...x, [k]: v }));
+  };
 
   async function load(which = tab) {
     setErr('');
@@ -79,8 +82,8 @@ export default function Posting() {
       <form className="card" onSubmit={post}>
         <div className="form-section">الفترة</div>
         <div className="grid two">
-          <Field label="من تاريخ"><input type="date" value={f.from} onChange={set('from')} /></Field>
-          <Field label="إلى تاريخ"><input type="date" value={f.to} onChange={set('to')} /></Field>
+          <Field label="من تاريخ"><input type="date" value={f.from} max={setup?.defaults.to} onChange={set('from')} /></Field>
+          <Field label="إلى تاريخ"><input type="date" value={f.to} max={setup?.defaults.to} onChange={set('to')} /></Field>
         </div>
 
         <div className="form-section">تحديد الموظفين <span className="muted">(اختياري)</span></div>

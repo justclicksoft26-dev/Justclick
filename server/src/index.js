@@ -265,7 +265,8 @@ const checkRange = ({ from, to }) => {
 };
 
 app.get('/api/posting/setup', wrap(async (_req, res) => {
-  res.json({ defaults: await getDefaults(), reportRange: await getPostedRange(), ...(await getLookups()) });
+  const today = localToday();
+  res.json({ defaults: { ...(await getDefaults()), from: today, to: today }, reportRange: await getPostedRange(), ...(await getLookups()) });
 }));
 
 app.post('/api/posting/post', wrap(async (req, res) => {
