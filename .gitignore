@@ -8,3 +8,4 @@ agent/agent.db-shm
 agent/agent.db-wal
 agent/logs/
 agent/daemon/
+server/backups/

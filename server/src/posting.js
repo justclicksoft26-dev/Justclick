@@ -24,7 +24,7 @@ export async function getLookups() {
 const ids = (list) => (Array.isArray(list) ? list.map(Number).filter((n) => Number.isInteger(n) && n >= 0) : []);
 
 /** Employees in scope, as the ERP screen does: those with an EMP_VAR_STATUS row for the current HR period. */
-export async function selectEmployees({ from, depts = [], jobs = [], emps = [] }, exec = query) {
+export async function selectEmployees({ from, depts = [], jobs = [], emps = [], branches = [] }, exec = query) {
   const hr = await getDefaults();
   const binds = { y: hr.year, m: hr.month, f: from };
   const filter = (col, list, tag) => {
@@ -37,7 +37,7 @@ export async function selectEmployees({ from, depts = [], jobs = [], emps = [] }
       FROM EMPLOYEES e JOIN EMP_VAR_STATUS ev ON ev.EMP_ID = e.EMP_ID
      WHERE ev.VAR_YEAR = :y AND ev.VAR_MONTH = :m
        AND (e.END_SERVICE_DATE IS NULL OR e.END_SERVICE_DATE > TO_DATE(:f,'YYYY-MM-DD'))
-       ${filter('ev.DEPT_CODE', depts, 'd')}${filter('ev.JOB_CODE', jobs, 'j')}${filter('ev.EMP_ID', emps, 'e')}
+       ${filter('ev.DEPT_CODE', depts, 'd')}${filter('ev.JOB_CODE', jobs, 'j')}${filter('ev.EMP_ID', emps, 'e')}${filter('e.BRANCH_ID', branches, 'b')}
      ORDER BY ev.EMP_ID`;
   const { rows } = await exec(sql, binds);
   return rows.map((r) => ({ id: r.EMP_ID, hire: r.HIRE, ended: r.ENDED }));
@@ -121,9 +121,10 @@ export async function getActualTimes(filters) {
   const binds = { f: from, t: to };
   emps.forEach((e, i) => { binds[`i${i}`] = e.id; });
   const { rows } = await query(
-    `SELECT x.EMP_ID, TRIM(e.EMP_NAME_AR) NAME, ${ymd('x.FROM_IO_DATE')} D, ${hhmm('x.IN_TIME')} IN_T, ${hhmm('x.OUT_TIME')} OUT_T,
+    `SELECT x.EMP_ID, TRIM(e.EMP_NAME_AR) NAME, e.BRANCH_ID, TRIM(br.BRANCH_NAME_AR) BRANCH, ${ymd('x.FROM_IO_DATE')} D, ${hhmm('x.IN_TIME')} IN_T, ${hhmm('x.OUT_TIME')} OUT_T,
             x.IN_FLAG, x.OUT_FLAG, ${hhmm('x.SHIFT_DATE_FROM')} SHIFT_F, ${hhmm('x.SHIFT_DATE_TO')} SHIFT_T, NVL(g.GRACE_MIN, 0) GRACE
        FROM EMP_IO_TIMES x JOIN EMPLOYEES e ON e.EMP_ID = x.EMP_ID
+       LEFT JOIN BRANCHES br ON br.BRANCH_ID = e.BRANCH_ID
        LEFT JOIN ATTM_EMP_SETTING g ON g.EMP_ID = x.EMP_ID
       WHERE x.FROM_IO_DATE BETWEEN TO_DATE(:f,'YYYY-MM-DD') AND TO_DATE(:t,'YYYY-MM-DD')
         AND x.EMP_ID IN (${emps.map((_, i) => `:i${i}`).join(',')})
@@ -136,6 +137,7 @@ export async function getActualTimes(filters) {
     return {
       code: String(r.EMP_ID),
       name: r.NAME,
+      branch: r.BRANCH ?? '',
       date: r.D,
       dayName: dayNames[new Date(`${r.D}T00:00:00Z`).getUTCDay()],
       checkIn: r.IN_T,
@@ -186,7 +188,7 @@ export function summarizeLateAbsent(rows, activeCodes) {
   for (const r of rows) {
     if (!activeCodes.has(r.code)) continue;
     const s = by.get(r.code) ?? {
-      code: r.code, name: r.name, lateCount: 0, lateMinutes: 0, absentCount: 0,
+      code: r.code, name: r.name, branch: r.branch, lateCount: 0, lateMinutes: 0, absentCount: 0,
       tier1: 0, tier2: 0, tier3: 0, over: 0, deductionDays: 0, penalty: '-',
     };
     if (r.status === 'تأخير') {

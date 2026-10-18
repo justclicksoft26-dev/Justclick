@@ -45,6 +45,7 @@ export function validateEmployee(body, today = localToday(), { autoCode = false 
   if (!/^\d{14}$/.test(nid)) errors.nationalId = 'رقم الهوية لازم يكون 14 رقم';
   const jobId = optId(body.jobId);
   const deptId = optId(body.deptId);
+  const branchId = optId(body.branchId);
   if (!job && jobId == null) errors.job = 'الوظيفة مطلوبة';
   if (!isValidDate(hireDate) || hireDate > today) errors.hireDate = 'تاريخ التعيين لا يكون في المستقبل';
   if (!SAVEABLE_STATUSES.includes(status)) errors.status = 'الحالة غير صحيحة';
@@ -59,7 +60,7 @@ export function validateEmployee(body, today = localToday(), { autoCode = false 
 
   return {
     errors,
-    values: { code, name, nid, job, jobId, deptId, hireDate, status, start, end, weeklyOff: [...new Set(weeklyOff)].sort(), grace },
+    values: { code, name, nid, job, jobId, deptId, branchId, hireDate, status, start, end, weeklyOff: [...new Set(weeklyOff)].sort(), grace },
   };
 }
 

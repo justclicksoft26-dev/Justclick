@@ -19,19 +19,22 @@ const EMP_ORDER = 'ORDER BY e.EMP_ID';
  * Loads employees (with job, shifts, weekly off, holidays, vacations) overlapping [from, to].
  * Pass empId to load a single employee.
  */
-export async function loadEmployees({ empId = null, from, to, today }) {
-  const filter = empId == null ? '' : 'AND e.EMP_ID = :id';
+export async function loadEmployees({ empId = null, from, to, today, branch = null }) {
+  const filter = (empId == null ? '' : 'AND e.EMP_ID = :id') + (branch == null ? '' : ' AND e.BRANCH_ID = :br');
   const b = (extra = {}) => (empId == null ? extra : { id: empId, ...extra });
 
   const emps = (await query(
     `SELECT e.EMP_ID, e.EMP_NAME_AR, TRIM(e.ID_NO) ID_NO, TRIM(j.LOOK_UP_NAME_AR) JOB,
             ${ymd('e.HIRE_DATE')} HIRE_DATE, ${ymd('e.END_SERVICE_DATE')} END_DATE,
-            e.EMP_ACTIVE, e.END_SERVICE_FLG, NVL(g.GRACE_MIN, 0) GRACE_MIN
+            e.EMP_ACTIVE, e.END_SERVICE_FLG, NVL(g.GRACE_MIN, 0) GRACE_MIN,
+            e.BRANCH_ID, TRIM(br.BRANCH_NAME_AR) BRANCH, TRIM(d.LOOK_UP_NAME_AR) DEPT
        FROM EMPLOYEES e
        LEFT JOIN LOOK_UP j ON j.PARENT_ID = 12 AND j.LOOK_UP_ID = e.JOB_CODE
+       LEFT JOIN LOOK_UP d ON d.PARENT_ID = 8 AND d.LOOK_UP_ID = e.DEPT_CODE
+       LEFT JOIN BRANCHES br ON br.BRANCH_ID = e.BRANCH_ID
        LEFT JOIN ATTM_EMP_SETTING g ON g.EMP_ID = e.EMP_ID
       WHERE 1 = 1 ${filter} ${EMP_ORDER}`,
-    b(),
+    b(branch == null ? {} : { br: branch }),
   )).rows;
 
   const shifts = (await query(
@@ -77,7 +80,7 @@ export async function loadEmployees({ empId = null, from, to, today }) {
     const status = r.END_SERVICE_FLG === 'Y' ? 'RESIGNED' : r.EMP_ACTIVE !== 'Y' ? 'SUSPENDED' : onLeaveToday ? 'ON_LEAVE' : 'ACTIVE';
     const current = empShifts.find((s) => s.from <= today && today <= s.to) ?? empShifts.at(-1);
     return {
-      code: String(r.EMP_ID), name: r.EMP_NAME_AR?.trim() ?? '', nationalId: r.ID_NO ?? '', job: r.JOB ?? '',
+      code: String(r.EMP_ID), name: r.EMP_NAME_AR?.trim() ?? '', nationalId: r.ID_NO ?? '', job: r.JOB ?? '', dept: r.DEPT ?? '', branchId: r.BRANCH_ID, branch: r.BRANCH ?? '',
       hireDate: r.HIRE_DATE, endDate: r.END_DATE, status, statusLabel: STATUSES[status],
       graceMin: r.GRACE_MIN,
       shiftStart: current?.startText ?? null, shiftEnd: current?.endText ?? null,
@@ -259,7 +262,12 @@ export async function createEmployee(v) {
     if (Object.keys(conflicts).length) throw new Conflict(conflicts);
 
     const meta = (await exec('SELECT COMPANY_CODE C, FISCAL_YEAR F, BRANCH_ID B FROM HR_SYS_INFO FETCH FIRST 1 ROW ONLY')).rows[0] ?? {};
-    const branch = (await exec('SELECT BRANCH_ID B FROM EMPLOYEES WHERE BRANCH_ID IS NOT NULL GROUP BY BRANCH_ID ORDER BY COUNT(*) DESC FETCH FIRST 1 ROW ONLY')).rows[0]?.B ?? meta.B ?? 0;
+    if (v.branchId != null && !(await exec('SELECT 1 FROM BRANCHES WHERE BRANCH_ID = :b', { b: v.branchId })).rows.length) {
+      throw new Conflict({ branchId: 'الفرع المختار غير موجود' });
+    }
+    const branch = v.branchId
+      ?? (await exec('SELECT BRANCH_ID B FROM EMPLOYEES WHERE BRANCH_ID IS NOT NULL GROUP BY BRANCH_ID ORDER BY COUNT(*) DESC FETCH FIRST 1 ROW ONLY')).rows[0]?.B
+      ?? meta.B ?? 0;
 
     // job: a chosen lookup id wins; otherwise reuse the lookup row with the same name or add one
     let job = v.jobId ?? null;
@@ -365,9 +373,13 @@ export async function updateEmployee(code, v) {
         throw new Conflict({ [t.field]: 'القيمة المختارة غير موجودة' });
       }
     }
+    if (v.branchId != null && !(await exec('SELECT 1 FROM BRANCHES WHERE BRANCH_ID = :b', { b: v.branchId })).rows.length) {
+      throw new Conflict({ branchId: 'الفرع المختار غير موجود' });
+    }
     const meta = (await exec('SELECT COMPANY_CODE C, FISCAL_YEAR F, BRANCH_ID B FROM HR_SYS_INFO FETCH FIRST 1 ROW ONLY')).rows[0] ?? {};
 
     const binds = {
+      br: v.branchId,
       id, name: v.name, nameEn: v.nameEn || null, nid: v.nid, hd: v.hireDate, bd: v.birthDate, m1: v.mobile1 || null, m2: v.mobile2 || null,
       mail: v.email || null, addr: v.address || null, notes: v.notes || null,
       active: v.status === 'SUSPENDED' ? 'N' : 'Y', ended: v.status === 'RESIGNED' ? 'Y' : 'N', ed: v.endDate,
@@ -378,6 +390,7 @@ export async function updateEmployee(code, v) {
               HIRE_DATE = TO_DATE(:hd,'YYYY-MM-DD'), BIRTH_DATE = TO_DATE(:bd,'YYYY-MM-DD'),
               MOBILE_1 = :m1, MOBILE_2 = :m2, E_MAIL = :mail, EMP_ADDRESS = :addr, EMP_NOTES = :notes,
               EMP_ACTIVE = :active, END_SERVICE_FLG = :ended, END_SERVICE_DATE = TO_DATE(:ed,'YYYY-MM-DD'),
+              BRANCH_ID = NVL(:br, BRANCH_ID),
               ${LOOKUP_TYPES.map((t, i) => `${t.col} = :l${i}`).join(', ')}
         WHERE EMP_ID = :id`,
       binds,

@@ -17,7 +17,10 @@ const bucket = (status) => ({
 
 const tally = () => ({ present: 0, late: 0, absent: 0, off: 0, leave: 0, other: 0 });
 
-async function postedRows(from, to) {
+async function postedRows(from, to, branches = []) {
+  const binds = { f: from, t: to };
+  branches.forEach((b, i) => { binds[`b${i}`] = b; });
+  const inList = branches.length ? `AND e.BRANCH_ID IN (${branches.map((_, i) => `:b${i}`).join(',')})` : '';
   const { rows } = await query(
     `SELECT x.EMP_ID, TRIM(e.EMP_NAME_AR) NAME, TRIM(j.LOOK_UP_NAME_AR) JOB, ${ymd('x.FROM_IO_DATE')} D,
             ${hhmm('x.IN_TIME')} IN_T, ${hhmm('x.OUT_TIME')} OUT_T, x.IN_FLAG, x.OUT_FLAG,
@@ -26,9 +29,9 @@ async function postedRows(from, to) {
        LEFT JOIN LOOK_UP j ON j.PARENT_ID = 12 AND j.LOOK_UP_ID = e.JOB_CODE
        LEFT JOIN ATTM_EMP_SETTING g ON g.EMP_ID = x.EMP_ID
       WHERE x.FROM_IO_DATE BETWEEN TO_DATE(:f,'YYYY-MM-DD') AND TO_DATE(:t,'YYYY-MM-DD')
-        AND e.EMP_ACTIVE = 'Y' AND NVL(e.END_SERVICE_FLG, 'N') <> 'Y'
+        AND e.EMP_ACTIVE = 'Y' AND NVL(e.END_SERVICE_FLG, 'N') <> 'Y' ${inList}
       ORDER BY x.FROM_IO_DATE, e.EMP_NAME_AR`,
-    { f: from, t: to },
+    binds,
   );
   return rows.map((r) => {
     const d = describe(r, r.GRACE);
@@ -40,7 +43,7 @@ async function postedRows(from, to) {
 }
 
 /** Attendance picture of one day (default: newest posted day) plus a 14-day trend. */
-export async function getDashboard(date) {
+export async function getDashboard(date, branches = []) {
   const range = (await query(
     `SELECT ${ymd('MIN(FROM_IO_DATE)')} MN, ${ymd('MAX(CASE WHEN FROM_IO_DATE <= TRUNC(SYSDATE) THEN FROM_IO_DATE END)')} MX FROM EMP_IO_TIMES`,
   )).rows[0];
@@ -48,7 +51,7 @@ export async function getDashboard(date) {
 
   const day = date || range.MX;
   const trendFrom = addDays(day, -13);
-  const all = await postedRows(trendFrom, day);
+  const all = await postedRows(trendFrom, day, branches);
 
   const rows = all.filter((r) => r.date === day);
   const summary = { total: rows.length, ...tally() };

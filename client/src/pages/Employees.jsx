@@ -5,7 +5,7 @@ import { api, getOptions, today, dayLabel, norm, STATUS_OPTIONS, STATUS_TONE } f
 import { Badge, Empty, Field, Icon, Modal, PageHeader, Spinner, Stat, WeekdayPicker, notify, useConfirm } from '../components/ui.jsx';
 
 const empty = () => ({
-  code: '', name: '', nationalId: '', jobId: '', deptId: '', hireDate: today(), status: 'ACTIVE',
+  code: '', name: '', nationalId: '', jobId: '', deptId: '', branchId: '', hireDate: today(), status: 'ACTIVE',
   shiftStart: '06:00', shiftEnd: '13:30', weeklyOff: [5], graceMin: 14,
 });
 
@@ -16,7 +16,7 @@ function EmployeeForm({ onClose, onSaved }) {
   const [nextCode, setNextCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
-  const [opts, setOpts] = useState({ jobs: [], depts: [] });
+  const [opts, setOpts] = useState({ jobs: [], depts: [], branches: [] });
 
   useEffect(() => {
     api('/api/employees/next-code').then((r) => setNextCode(r.code)).catch(() => {});
@@ -86,6 +86,12 @@ function EmployeeForm({ onClose, onSaved }) {
               {opts.depts.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </Field>
+          <Field label="الفرع" error={errors.branchId}>
+            <select value={form.branchId} onChange={set('branchId')}>
+              <option value="">— اختر الفرع —</option>
+              {opts.branches.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </Field>
           <Field label="تاريخ التعيين" error={errors.hireDate}>
             <input type="date" value={form.hireDate} onChange={set('hireDate')} />
           </Field>
@@ -122,6 +128,7 @@ export default function Employees() {
   const [list, setList] = useState(null);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
+  const [branch, setBranch] = useState('');
   const [adding, setAdding] = useState(false);
   const [confirm, confirmNode] = useConfirm();
 
@@ -131,8 +138,15 @@ export default function Employees() {
   const shown = useMemo(() => {
     const n = norm(q.trim());
     return (list ?? []).filter((e) => (!status || e.status === status)
-      && (!n || norm(`${e.name} ${e.code} ${e.job} ${e.nationalId}`).includes(n)));
-  }, [list, q, status]);
+      && (!branch || String(e.branchId) === branch)
+      && (!n || norm(`${e.name} ${e.code} ${e.job} ${e.dept} ${e.branch} ${e.nationalId}`).includes(n)));
+  }, [list, q, status, branch]);
+
+  const branches = useMemo(() => {
+    const m = new Map();
+    for (const e of list ?? []) if (e.branchId != null) m.set(e.branchId, e.branch || `فرع ${e.branchId}`);
+    return [...m].sort((a, b) => a[0] - b[0]);
+  }, [list]);
 
   const count = (s) => (list ?? []).filter((e) => e.status === s).length;
 
@@ -165,8 +179,12 @@ export default function Employees() {
         <div className="toolbar">
           <div className="search">
             <Icon name="search" size={16} />
-            <input placeholder="بحث بالاسم أو الكود أو الوظيفة..." value={q} onChange={(e) => setQ(e.target.value)} />
+            <input placeholder="بحث بالاسم أو الكود أو الفرع أو الوظيفة..." value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
+          <select value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="تصفية بالفرع">
+            <option value="">كل الفروع</option>
+            {branches.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
           <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="تصفية بالحالة">
             <option value="">كل الحالات</option>
             <option value="ACTIVE">نشط</option>
@@ -180,16 +198,17 @@ export default function Employees() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>الكود</th><th>الاسم</th><th>الوظيفة</th><th>الهوية</th><th>التعيين</th><th>الحالة</th><th>الدوام</th><th>الإجازة الأسبوعية</th><th /></tr>
+                <tr><th>الكود</th><th>الاسم</th><th>الفرع</th><th>الإدارة</th><th>الوظيفة</th><th>الهوية</th><th>الحالة</th><th>الدوام</th><th>الإجازة الأسبوعية</th><th /></tr>
               </thead>
               <tbody>
                 {shown.map((e) => (
                   <tr key={e.code}>
                     <td className="mono strong">{e.code}</td>
                     <td className="strong"><Link className="row-link" to={`/employees/${e.code}`}>{e.name}</Link></td>
+                    <td>{e.branch || '-'}</td>
+                    <td>{e.dept || '-'}</td>
                     <td>{e.job || '-'}</td>
                     <td className="mono">{e.nationalId || '-'}</td>
-                    <td className="mono">{e.hireDate ?? '-'}</td>
                     <td><Badge tone={STATUS_TONE[e.status]}>{e.statusLabel}</Badge></td>
                     <td dir="ltr" className="mono">{e.shiftStart ? `${e.shiftStart} - ${e.shiftEnd}` : '-'}</td>
                     <td>

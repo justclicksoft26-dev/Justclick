@@ -26,14 +26,21 @@ const usage = async (exec, t, id) => {
 };
 
 /** Every type with its values: what the employee forms use to fill their dropdowns. */
-export async function allOptions() {
+export async function allOptions(branch = null) {
   const rows = (await query(
     `SELECT PARENT_ID P, LOOK_UP_ID ID, TRIM(LOOK_UP_NAME_AR) NAME FROM LOOK_UP
       WHERE PARENT_ID IN (${LOOKUP_TYPES.map((t) => t.id).join(',')}) AND LOOK_UP_NAME_AR IS NOT NULL
       ORDER BY PARENT_ID, LOOK_UP_ID`,
   )).rows;
   const by = Map.groupBy(rows, (r) => r.P);
-  return Object.fromEntries(LOOKUP_TYPES.map((t) => [t.key, (by.get(t.id) ?? []).map((r) => ({ id: r.ID, name: r.NAME }))]));
+  const branches = (await query(
+    `SELECT BRANCH_ID ID, TRIM(BRANCH_NAME_AR) NAME FROM BRANCHES ${branch == null ? '' : 'WHERE BRANCH_ID = :b'} ORDER BY BRANCH_ID`,
+    branch == null ? {} : { b: branch },
+  )).rows;
+  return {
+    ...Object.fromEntries(LOOKUP_TYPES.map((t) => [t.key, (by.get(t.id) ?? []).map((r) => ({ id: r.ID, name: r.NAME }))])),
+    branches: branches.map((r) => ({ id: r.ID, name: r.NAME })),
+  };
 }
 
 export async function listTypes() {
