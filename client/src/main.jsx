@@ -43,7 +43,7 @@ function Shell({ user, logout }) {
     <div className="shell">
       <aside className={`sidebar${open ? ' open' : ''}`}>
         <div className="brand">
-          <div className="brand-mark"><Icon name="fingerprint" size={22} /></div>
+          <div className="brand-mark"><img src="/logo.png" alt="شركة الأفق التعليمية" /></div>
           <div><b>الحضور والانصراف</b><span>نظام الموارد البشرية</span></div>
         </div>
         <nav className="side-nav">
