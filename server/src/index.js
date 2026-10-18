@@ -8,7 +8,8 @@ import { getActualTimes, getDefaults, getLookups, getPostedRange, postActualTime
 import { getDashboard } from './dashboard.js';
 import { LOOKUP_TYPES, allOptions, createValue, deleteValue, Duplicate, listTypes, listValues, typeById, updateValue, validateLookup } from './lookups.js';
 import { importEmployees, templateBuffer } from './import-employees.js';
-import { currentUser, login, requireAuth } from './auth.js';
+import { currentUser, login, requireAdmin, requireAuth } from './auth.js';
+import { query } from './db.js';
 import { Conflict, countPunches, createEmployee, deleteEmployee, getEmployee, loadEmployees, nextEmployeeCode, updateEmployee, publicEmployee, storePunches } from './erp.js';
 import { deleteHoliday, getHoliday, listHolidays, saveHoliday, validateHoliday } from './holidays.js';
 
@@ -65,15 +66,20 @@ app.post('/api/auth/login', wrap(async (req, res) => {
 app.get('/api/auth/me', requireAuth, currentUser);
 app.use('/api', requireAuth);
 
+// A branch user only reaches employees of their own branch; admins reach everyone.
+const inScope = async (req, code) => req.branch == null
+  || (await query('SELECT 1 FROM EMPLOYEES WHERE EMP_ID = :id AND BRANCH_ID = :b', { id: Number(code), b: req.branch })).rows.length > 0;
+
 // ---------- employees (ERP: EMPLOYEES, SHIFT_EMP/SHIFT_SETUP, OFFCIAL_HOLIDAY_*) ----------
-app.get('/api/employees', wrap(async (_req, res) => {
+app.get('/api/employees', wrap(async (req, res) => {
   const today = localToday();
-  res.json((await loadEmployees({ from: today, to: today, today })).map(publicEmployee));
+  res.json((await loadEmployees({ from: today, to: today, today, branch: req.branch })).map(publicEmployee));
 }));
 
 app.post('/api/employees', wrap(async (req, res) => {
   const { errors, values } = validateEmployee(req.body, undefined, { autoCode: true });
   if (Object.keys(errors).length) return res.status(400).json({ errors });
+  if (req.branch != null) values.branchId = req.branch;
   try {
     const { code } = await createEmployee(values);
     res.status(201).json({ ok: true, code });
@@ -87,12 +93,12 @@ app.get('/api/employees/next-code', wrap(async (_req, res) => {
   res.json({ code: String(await nextEmployeeCode()) });
 }));
 
-app.get('/api/employees/template', wrap(async (_req, res) => {
+app.get('/api/employees/template', requireAdmin, wrap(async (_req, res) => {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(Buffer.from(await templateBuffer()));
 }));
 
-app.post('/api/employees/import', upload.single('file'), wrap(async (req, res) => {
+app.post('/api/employees/import', requireAdmin, upload.single('file'), wrap(async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'اختار ملف Excel أولا' });
   const r = await importEmployees(req.file.buffer);
   if (r.error) return res.status(400).json({ message: r.error });
@@ -100,14 +106,17 @@ app.post('/api/employees/import', upload.single('file'), wrap(async (req, res) =
 }));
 
 app.get('/api/employees/:code(\\d+)', wrap(async (req, res) => {
+  if (!(await inScope(req, req.params.code))) return res.status(404).json({ message: 'الموظف غير موجود' });
   const e = await getEmployee(req.params.code);
   if (!e) return res.status(404).json({ message: 'الموظف غير موجود' });
   res.json(e);
 }));
 
 app.put('/api/employees/:code(\\d+)', wrap(async (req, res) => {
+  if (!(await inScope(req, req.params.code))) return res.status(404).json({ message: 'الموظف غير موجود' });
   const { errors, values } = validateEmployeeUpdate(req.body, LOOKUP_TYPES.map((t) => t.field));
   if (Object.keys(errors).length) return res.status(400).json({ errors });
+  if (req.branch != null) values.branchId = req.branch;
   try {
     const r = await updateEmployee(req.params.code, values);
     if (!r.found) return res.status(404).json({ message: 'الموظف غير موجود' });
@@ -120,6 +129,7 @@ app.put('/api/employees/:code(\\d+)', wrap(async (req, res) => {
 
 app.delete('/api/employees/:code', wrap(async (req, res) => {
   if (!/^\d+$/.test(req.params.code)) return res.status(404).json({ message: 'الموظف غير موجود' });
+  if (!(await inScope(req, req.params.code))) return res.status(404).json({ message: 'الموظف غير موجود' });
   const r = await deleteEmployee(req.params.code);
   if (!r.found) return res.status(404).json({ message: 'الموظف غير موجود' });
   if (r.blocked.length) {
@@ -129,21 +139,21 @@ app.delete('/api/employees/:code', wrap(async (req, res) => {
 }));
 
 // ---------- lookups / coding screens (ERP: LOOK_UP) ----------
-app.get('/api/lookups/options', wrap(async (_req, res) => {
-  res.json(await allOptions());
+app.get('/api/lookups/options', wrap(async (req, res) => {
+  res.json(await allOptions(req.branch));
 }));
 
-app.get('/api/lookups', wrap(async (_req, res) => {
+app.get('/api/lookups', requireAdmin, wrap(async (_req, res) => {
   res.json(await listTypes());
 }));
 
-app.get('/api/lookups/:type', wrap(async (req, res) => {
+app.get('/api/lookups/:type', requireAdmin, wrap(async (req, res) => {
   const r = typeById(req.params.type) ? await listValues(req.params.type) : null;
   if (!r) return res.status(404).json({ message: 'نوع التكويد غير موجود' });
   res.json(r);
 }));
 
-app.post('/api/lookups/:type', wrap(async (req, res) => {
+app.post('/api/lookups/:type', requireAdmin, wrap(async (req, res) => {
   if (!typeById(req.params.type)) return res.status(404).json({ message: 'نوع التكويد غير موجود' });
   const { errors, values } = validateLookup(req.body);
   if (Object.keys(errors).length) return res.status(400).json({ errors });
@@ -155,7 +165,7 @@ app.post('/api/lookups/:type', wrap(async (req, res) => {
   }
 }));
 
-app.put('/api/lookups/:type/:id', wrap(async (req, res) => {
+app.put('/api/lookups/:type/:id', requireAdmin, wrap(async (req, res) => {
   if (!typeById(req.params.type) || !/^\d+$/.test(req.params.id)) return res.status(404).json({ message: 'غير موجود' });
   const { errors, values } = validateLookup(req.body);
   if (Object.keys(errors).length) return res.status(400).json({ errors });
@@ -168,7 +178,7 @@ app.put('/api/lookups/:type/:id', wrap(async (req, res) => {
   }
 }));
 
-app.delete('/api/lookups/:type/:id', wrap(async (req, res) => {
+app.delete('/api/lookups/:type/:id', requireAdmin, wrap(async (req, res) => {
   if (!typeById(req.params.type) || !/^\d+$/.test(req.params.id)) return res.status(404).json({ message: 'غير موجود' });
   const r = await deleteValue(req.params.type, Number(req.params.id));
   if (!r.found) return res.status(404).json({ message: 'غير موجود' });
@@ -180,29 +190,29 @@ app.delete('/api/lookups/:type/:id', wrap(async (req, res) => {
 app.get('/api/dashboard', wrap(async (req, res) => {
   const date = req.query.date ? String(req.query.date) : '';
   if (date && (!isValidDate(date) || date > localToday())) return res.status(400).json({ message: 'تاريخ غير صحيح' });
-  res.json(await getDashboard(date));
+  res.json(await getDashboard(date, branchesFor(req, req.query.branches)));
 }));
 
 // ---------- official holidays (ERP: OFFCIAL_HOLIDAY_M / OFFCIAL_HOLIDAY_D, APEX page 260) ----------
 const holidayId = (req) => (/^\d+$/.test(req.params.id) ? Number(req.params.id) : null);
 
-app.get('/api/holidays', wrap(async (_req, res) => {
+app.get('/api/holidays', requireAdmin, wrap(async (_req, res) => {
   res.json(await listHolidays());
 }));
 
-app.get('/api/holidays/:id', wrap(async (req, res) => {
+app.get('/api/holidays/:id', requireAdmin, wrap(async (req, res) => {
   const h = holidayId(req) == null ? null : await getHoliday(holidayId(req));
   if (!h) return res.status(404).json({ message: 'العطلة غير موجودة' });
   res.json(h);
 }));
 
-app.post('/api/holidays', wrap(async (req, res) => {
+app.post('/api/holidays', requireAdmin, wrap(async (req, res) => {
   const { errors, values } = validateHoliday(req.body);
   if (Object.keys(errors).length) return res.status(400).json({ errors });
   res.status(201).json(await saveHoliday(null, values));
 }));
 
-app.put('/api/holidays/:id', wrap(async (req, res) => {
+app.put('/api/holidays/:id', requireAdmin, wrap(async (req, res) => {
   const { errors, values } = validateHoliday(req.body);
   if (Object.keys(errors).length) return res.status(400).json({ errors });
   const r = holidayId(req) == null ? null : await saveHoliday(holidayId(req), values);
@@ -210,7 +220,7 @@ app.put('/api/holidays/:id', wrap(async (req, res) => {
   res.json(r);
 }));
 
-app.delete('/api/holidays/:id', wrap(async (req, res) => {
+app.delete('/api/holidays/:id', requireAdmin, wrap(async (req, res) => {
   if (holidayId(req) == null || !(await deleteHoliday(holidayId(req)))) return res.status(404).json({ message: 'العطلة غير موجودة' });
   res.json({ ok: true });
 }));
@@ -220,7 +230,7 @@ const pad = (n) => String(n).padStart(2, '0');
 const fmtTs = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 const summary = (r) => ({ received: r.received, stored: r.stored, ignored: r.received - r.stored });
 
-app.post('/api/punches/pull', wrap(async (req, res) => {
+app.post('/api/punches/pull', requireAdmin, wrap(async (req, res) => {
   const ip = String(req.body.ip ?? '').trim();
   const port = Number(req.body.port);
   if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip) || !Number.isInteger(port) || port < 1 || port > 65535) {
@@ -242,21 +252,23 @@ app.post('/api/punches/pull', wrap(async (req, res) => {
   res.json(summary(await storePunches(rows)));
 }));
 
-app.post('/api/punches/upload', upload.single('file'), wrap(async (req, res) => {
+app.post('/api/punches/upload', requireAdmin, upload.single('file'), wrap(async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'اختار ملف CSV أولا' });
   const parsed = parsePunchCsv(req.file.buffer.toString('utf8'));
   if (parsed.error) return res.status(400).json({ message: `تم رفض الملف: ${parsed.error}` });
   res.json(summary(await storePunches(parsed.rows)));
 }));
 
-app.get('/api/punches/count', wrap(async (_req, res) => {
+app.get('/api/punches/count', requireAdmin, wrap(async (_req, res) => {
   res.json({ total: await countPunches() });
 }));
 
 // ---------- posting actual times (APEX page 254) + reports fed from the posted rows ----------
 const listOf = (v) => (v ? String(v).split(',').filter(Boolean) : []);
+// Branch ids a request may see: a branch user is pinned to their own branch, an admin picks any (empty = all).
+const branchesFor = (req, requested) => (req.branch != null ? [req.branch] : (Array.isArray(requested) ? requested : listOf(requested)).map(Number).filter(Number.isInteger));
 const filtersFrom = (src) => ({
-  from: src.from, to: src.to, depts: listOf(src.depts), jobs: listOf(src.jobs), emps: listOf(src.emps),
+  from: src.from, to: src.to, depts: listOf(src.depts), jobs: listOf(src.jobs), emps: listOf(src.emps), branches: listOf(src.branches),
 });
 const checkRange = ({ from, to }) => {
   if (!isValidDate(from) || !isValidDate(to) || from > to) return 'اختار فترة صحيحة';
@@ -264,13 +276,16 @@ const checkRange = ({ from, to }) => {
   return null;
 };
 
-app.get('/api/posting/setup', wrap(async (_req, res) => {
+app.get('/api/posting/setup', wrap(async (req, res) => {
   const today = localToday();
-  res.json({ defaults: { ...(await getDefaults()), from: today, to: today }, reportRange: await getPostedRange(), ...(await getLookups()) });
+  res.json({
+    defaults: { ...(await getDefaults()), from: today, to: today }, reportRange: await getPostedRange(), ...(await getLookups()),
+    branches: (await allOptions(req.branch)).branches,
+  });
 }));
 
 app.post('/api/posting/post', wrap(async (req, res) => {
-  const f = { from: req.body.from, to: req.body.to, depts: req.body.depts, jobs: req.body.jobs, emps: req.body.emps };
+  const f = { from: req.body.from, to: req.body.to, depts: req.body.depts, jobs: req.body.jobs, emps: req.body.emps, branches: branchesFor(req, req.body.branches) };
   const bad = checkRange(f);
   if (bad) return res.status(400).json({ message: bad });
   res.json(await postActualTimes(f));
@@ -278,6 +293,7 @@ app.post('/api/posting/post', wrap(async (req, res) => {
 
 app.get('/api/posting/actual', wrap(async (req, res) => {
   const f = filtersFrom(req.query);
+  f.branches = branchesFor(req, f.branches);
   const bad = checkRange(f);
   if (bad) return res.status(400).json({ message: bad });
   res.json(await getActualTimes(f));
@@ -285,10 +301,11 @@ app.get('/api/posting/actual', wrap(async (req, res) => {
 
 app.get('/api/posting/late-absent', wrap(async (req, res) => {
   const f = filtersFrom(req.query);
+  f.branches = branchesFor(req, f.branches);
   const bad = checkRange(f);
   if (bad) return res.status(400).json({ message: bad });
   const today = localToday();
-  const active = new Set((await loadEmployees({ from: today, to: today, today })).filter((e) => e.status === 'ACTIVE').map((e) => e.code));
+  const active = new Set((await loadEmployees({ from: today, to: today, today, branch: req.branch })).filter((e) => e.status === 'ACTIVE').map((e) => e.code));
   res.json(summarizeLateAbsent(await getActualTimes(f), active));
 }));
 

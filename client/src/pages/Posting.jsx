@@ -6,14 +6,14 @@ import { Alert, Badge, Field, Icon, OptionPicker, PageHeader, Spinner, notify } 
 
 const qs = (f) => {
   const p = new URLSearchParams({ from: f.from, to: f.to });
-  for (const k of ['depts', 'jobs', 'emps']) if (f[k].length) p.set(k, f[k].join(','));
+  for (const k of ['depts', 'jobs', 'emps', 'branches']) if (f[k]?.length) p.set(k, f[k].join(','));
   return p.toString();
 };
 
 export default function Posting() {
   const [setup, setSetup] = useState(null);
   const [employees, setEmployees] = useState([]);
-  const [f, setF] = useState({ from: '', to: '', depts: [], jobs: [], emps: [] });
+  const [f, setF] = useState({ from: '', to: '', branches: [], depts: [], jobs: [], emps: [] });
   const [tab, setTab] = useState('actual');
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -88,6 +88,12 @@ export default function Posting() {
 
         <div className="form-section">تحديد الموظفين <span className="muted">(اختياري)</span></div>
         <div className="grid">
+          {(setup?.branches?.length ?? 0) > 1 && (
+            <div className="field">
+              <span className="field-label">الفرع</span>
+              <OptionPicker options={setup.branches} value={f.branches.map(String)} onChange={(v) => setF({ ...f, branches: v })} height={150} placeholder="بحث" />
+            </div>
+          )}
           <div className="field">
             <span className="field-label">الإدارة</span>
             <OptionPicker options={setup?.depts ?? []} value={f.depts.map(String)} onChange={(v) => setF({ ...f, depts: v })} height={150} placeholder="بحث" />

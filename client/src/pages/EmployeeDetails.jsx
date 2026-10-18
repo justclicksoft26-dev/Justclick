@@ -4,6 +4,8 @@ import Loading from '../Loading.jsx';
 import { api, getOptions, STATUS_TONE } from '../api.js';
 import { Alert, Badge, Empty, Field, Icon, PageHeader, Spinner, WeekdayPicker, notify } from '../components/ui.jsx';
 
+const filled = (v) => v != null && v !== '';
+
 const SAVE_STATUS = [{ value: 'ACTIVE', label: 'نشط' }, { value: 'SUSPENDED', label: 'موقوف' }, { value: 'RESIGNED', label: 'مستقيل' }];
 
 function LookupSelect({ options, value, onChange, required }) {
@@ -64,7 +66,7 @@ export default function EmployeeDetails() {
 
   return (
     <form onSubmit={save} noValidate>
-      <PageHeader title={orig.name} subtitle={`كود الموظف ${orig.code}${orig.job ? ` — ${orig.job}` : ''}`}>
+      <PageHeader title={orig.name} subtitle={[`كود الموظف ${orig.code}`, orig.branch, orig.dept, orig.job].filter(Boolean).join(' — ')}>
         <Badge tone={STATUS_TONE[orig.status]}>{orig.statusLabel}</Badge>
         <button type="button" className="btn ghost" onClick={() => nav('/employees')}>رجوع</button>
         <button className="btn" disabled={busy}>{busy ? <Spinner /> : <Icon name="check" size={16} />}حفظ التعديلات</button>
@@ -72,40 +74,23 @@ export default function EmployeeDetails() {
       {msg && <Alert tone="danger">{msg}</Alert>}
 
       <section className="card">
-        <div className="card-title"><Icon name="users" />البيانات الشخصية</div>
+        <div className="card-title"><Icon name="users" />بيانات الموظف</div>
         <div className="grid">
           <Field label="كود الموظف" hint="لا يمكن تغيير الكود"><input value={orig.code} readOnly dir="ltr" /></Field>
           <Field label="الاسم (عربي)" error={errors.name}><input value={form.name} onChange={set('name')} /></Field>
-          <Field label="الاسم (إنجليزي)" error={errors.nameEn}><input value={form.nameEn} onChange={set('nameEn')} dir="ltr" /></Field>
+          {filled(form.nameEn) && <Field label="الاسم (إنجليزي)" error={errors.nameEn}><input value={form.nameEn} onChange={set('nameEn')} dir="ltr" /></Field>}
           <Field label="رقم الهوية" error={errors.nationalId}><input value={form.nationalId} onChange={set('nationalId')} maxLength={14} inputMode="numeric" dir="ltr" /></Field>
-          <Field label="النوع" error={errors.genderId}><LookupSelect options={opts.genders} value={form.genderId} onChange={setVal('genderId')} /></Field>
-          <Field label="تاريخ الميلاد" error={errors.birthDate}><input type="date" value={form.birthDate} onChange={set('birthDate')} /></Field>
-          <Field label="الحالة الاجتماعية" error={errors.maritalId}><LookupSelect options={opts.marital} value={form.maritalId} onChange={setVal('maritalId')} /></Field>
-          <Field label="الموقف من التجنيد" error={errors.militaryId}><LookupSelect options={opts.military} value={form.militaryId} onChange={setVal('militaryId')} /></Field>
-          <Field label="المؤهل الدراسي" error={errors.qualId}><LookupSelect options={opts.qualifications} value={form.qualId} onChange={setVal('qualId')} /></Field>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-title"><Icon name="info" />بيانات الاتصال</div>
-        <div className="grid">
-          <Field label="موبايل 1" error={errors.mobile1}><input value={form.mobile1} onChange={set('mobile1')} dir="ltr" inputMode="tel" /></Field>
-          <Field label="موبايل 2" error={errors.mobile2}><input value={form.mobile2} onChange={set('mobile2')} dir="ltr" inputMode="tel" /></Field>
-          <Field label="البريد الإلكتروني" error={errors.email}><input value={form.email} onChange={set('email')} dir="ltr" inputMode="email" /></Field>
-          <Field label="العنوان" error={errors.address} className="span-all"><input value={form.address} onChange={set('address')} /></Field>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-title"><Icon name="chart" />بيانات الوظيفة</div>
-        <div className="grid">
-          <Field label="الوظيفة" error={errors.job ?? errors.jobId}><LookupSelect required options={opts.jobs} value={form.jobId} onChange={setVal('jobId')} /></Field>
+          <Field label="الفرع" error={errors.branchId}><LookupSelect options={opts.branches} value={form.branchId} onChange={setVal('branchId')} /></Field>
           <Field label="الإدارة" error={errors.deptId}><LookupSelect options={opts.depts} value={form.deptId} onChange={setVal('deptId')} /></Field>
-          <Field label="القسم" error={errors.sectionId}><LookupSelect options={opts.sections} value={form.sectionId} onChange={setVal('sectionId')} /></Field>
-          <Field label="مركز التكلفة" error={errors.costCenterId}><LookupSelect options={opts.costCenters} value={form.costCenterId} onChange={setVal('costCenterId')} /></Field>
-          <Field label="فئة الموظف" error={errors.categoryId}><LookupSelect options={opts.categories} value={form.categoryId} onChange={setVal('categoryId')} /></Field>
-          <Field label="نوع العقد" error={errors.contractId}><LookupSelect options={opts.contracts} value={form.contractId} onChange={setVal('contractId')} /></Field>
-          <Field label="تاريخ التعيين" error={errors.hireDate}><input type="date" value={form.hireDate ?? ''} onChange={set('hireDate')} /></Field>
+          <Field label="الوظيفة" error={errors.job ?? errors.jobId}><LookupSelect required options={opts.jobs} value={form.jobId} onChange={setVal('jobId')} /></Field>
+          {filled(form.sectionId) && <Field label="القسم" error={errors.sectionId}><LookupSelect options={opts.sections} value={form.sectionId} onChange={setVal('sectionId')} /></Field>}
+          {filled(form.costCenterId) && <Field label="مركز التكلفة" error={errors.costCenterId}><LookupSelect options={opts.costCenters} value={form.costCenterId} onChange={setVal('costCenterId')} /></Field>}
+          {filled(form.categoryId) && <Field label="فئة الموظف" error={errors.categoryId}><LookupSelect options={opts.categories} value={form.categoryId} onChange={setVal('categoryId')} /></Field>}
+          {filled(form.contractId) && <Field label="نوع العقد" error={errors.contractId}><LookupSelect options={opts.contracts} value={form.contractId} onChange={setVal('contractId')} /></Field>}
+          {filled(form.genderId) && <Field label="النوع" error={errors.genderId}><LookupSelect options={opts.genders} value={form.genderId} onChange={setVal('genderId')} /></Field>}
+          {filled(form.mobile1) && <Field label="موبايل 1" error={errors.mobile1}><input value={form.mobile1} onChange={set('mobile1')} dir="ltr" inputMode="tel" /></Field>}
+          {filled(form.mobile2) && <Field label="موبايل 2" error={errors.mobile2}><input value={form.mobile2} onChange={set('mobile2')} dir="ltr" inputMode="tel" /></Field>}
+          {filled(form.email) && <Field label="البريد الإلكتروني" error={errors.email}><input value={form.email} onChange={set('email')} dir="ltr" inputMode="email" /></Field>}
           <Field label="الحالة" error={errors.status}>
             <select value={form.status} onChange={set('status')}>
               {SAVE_STATUS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -133,10 +118,12 @@ export default function EmployeeDetails() {
         <p className="muted-note">تغيير الدوام يسري من اليوم، ويُحفظ الدوام السابق كما هو للفترات الماضية. أعد ترحيل المواعيد الفعلية بعد أي تعديل.</p>
       </section>
 
-      <section className="card">
-        <div className="card-title"><Icon name="file" />ملاحظات</div>
-        <Field label="ملاحظات" error={errors.notes}><textarea rows={3} value={form.notes} onChange={set('notes')} /></Field>
-      </section>
+      {filled(form.notes) && (
+        <section className="card">
+          <div className="card-title"><Icon name="file" />ملاحظات</div>
+          <Field label="ملاحظات" error={errors.notes}><textarea rows={3} value={form.notes} onChange={set('notes')} /></Field>
+        </section>
+      )}
     </form>
   );
 }

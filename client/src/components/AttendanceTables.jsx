@@ -5,11 +5,11 @@ export function ActualTable({ rows, emptyText }) {
   return (
     <div className="table-wrap">
       <table>
-        <thead><tr><th>الكود</th><th>الاسم</th><th>التاريخ</th><th>اليوم</th><th>الدوام</th><th>الحضور</th><th>الانصراف</th><th className="num">التأخير (د)</th><th>الجزاء المستحق</th><th>الحالة</th></tr></thead>
+        <thead><tr><th>الكود</th><th>الاسم</th><th>الفرع</th><th>التاريخ</th><th>اليوم</th><th>الدوام</th><th>الحضور</th><th>الانصراف</th><th className="num">التأخير (د)</th><th>الجزاء المستحق</th><th>الحالة</th></tr></thead>
         <tbody>
           {rows.map((r) => (
             <tr key={`${r.code}-${r.date}`}>
-              <td className="mono strong">{r.code}</td><td>{r.name}</td><td className="mono">{r.date}</td><td>{r.dayName}</td>
+              <td className="mono strong">{r.code}</td><td>{r.name}</td><td>{r.branch || '-'}</td><td className="mono">{r.date}</td><td>{r.dayName}</td>
               <td dir="ltr" className="mono">{r.shift ?? '-'}</td><td className="mono">{r.checkIn ?? '-'}</td><td className="mono">{r.checkOut ?? '-'}</td>
               <td className="num">{r.lateMinutes || '-'}</td>
               <td className="strong">{r.penalty}</td>
@@ -30,7 +30,7 @@ export function LateTable({ rows }) {
         <table>
           <thead>
             <tr>
-              <th>الكود</th><th>الاسم</th><th className="num">عدد التأخيرات</th><th className="num">إجمالي دقائق التأخير</th>
+              <th>الكود</th><th>الاسم</th><th>الفرع</th><th className="num">عدد التأخيرات</th><th className="num">إجمالي دقائق التأخير</th>
               <th className="num">06:15–06:35</th><th className="num">06:36–06:55</th><th className="num">06:56–07:30</th><th className="num">بعد 07:30</th>
               <th className="num">أيام الخصم</th><th>الجزاء المستحق</th><th className="num">الغيابات</th>
             </tr>
@@ -38,7 +38,7 @@ export function LateTable({ rows }) {
           <tbody>
             {rows.map((r) => (
               <tr key={r.code}>
-                <td className="mono strong">{r.code}</td><td>{r.name}</td>
+                <td className="mono strong">{r.code}</td><td>{r.name}</td><td>{r.branch || '-'}</td>
                 <td className="num">{r.lateCount ? <Badge tone="warning">{r.lateCount}</Badge> : '-'}</td>
                 <td className="num">{r.lateMinutes}</td><td className="num">{r.tier1}</td><td className="num">{r.tier2}</td><td className="num">{r.tier3}</td><td className="num">{r.over}</td>
                 <td className="num strong">{r.deductionDays}</td><td className="strong">{r.penalty}</td>

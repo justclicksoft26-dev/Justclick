@@ -19,12 +19,12 @@ async function passwordMatches(username, password) {
 export async function login(username, password) {
   if (!(await passwordMatches(username, password))) return null;
   const r = await query(
-    'select user_name, real_name, role_id from acc_users where upper(user_name) = upper(:u)',
+    'select user_name, real_name, role_id, is_admin, branch_id from acc_users where upper(user_name) = upper(:u)',
     { u: username },
   );
   const row = r.rows[0];
   if (!row) return null;
-  const user = { username: row.USER_NAME, name: row.REAL_NAME, roleId: row.ROLE_ID };
+  const user = { username: row.USER_NAME, name: row.REAL_NAME, roleId: row.ROLE_ID, isAdmin: row.IS_ADMIN === 1, branchId: row.BRANCH_ID };
   return { token: jwt.sign(user, SECRET, { expiresIn: EXPIRES_IN }), user };
 }
 
@@ -32,10 +32,17 @@ export function requireAuth(req, res, next) {
   const m = /^Bearer (.+)$/.exec(req.headers.authorization ?? '');
   try {
     req.user = jwt.verify(m?.[1] ?? '', SECRET);
+    // null = sees every branch (IS_ADMIN = 1); otherwise only the user's own BRANCH_ID (-1 matches nothing)
+    req.branch = req.user.isAdmin ? null : Number(req.user.branchId) > 0 ? Number(req.user.branchId) : -1;
     next();
   } catch {
     res.status(401).json({ message: 'انتهت الجلسة، سجّل الدخول من جديد' });
   }
+}
+
+export function requireAdmin(req, res, next) {
+  if (req.user?.isAdmin) return next();
+  res.status(403).json({ message: 'هذه الشاشة للمدير فقط' });
 }
 
 export const currentUser = (req, res) => res.json(req.user);

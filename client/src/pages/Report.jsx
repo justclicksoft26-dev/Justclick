@@ -10,14 +10,22 @@ const REPORTS = {
     subtitle: 'حضور وانصراف كل موظف يوميا مقارنة بموعد الدوام',
     endpoint: 'actual',
     file: 'actual-times',
-    columns: [['code', 'الكود'], ['name', 'الاسم'], ['date', 'التاريخ'], ['dayName', 'اليوم'], ['shift', 'الدوام'], ['checkIn', 'الحضور'], ['checkOut', 'الانصراف'], ['lateMinutes', 'التأخير (د)'], ['penalty', 'الجزاء المستحق'], ['status', 'الحالة']],
+    columns: [['code', 'الكود'], ['name', 'الاسم'], ['branch', 'الفرع'], ['date', 'التاريخ'], ['dayName', 'اليوم'], ['shift', 'الدوام'], ['checkIn', 'الحضور'], ['checkOut', 'الانصراف'], ['lateMinutes', 'التأخير (د)'], ['penalty', 'الجزاء المستحق'], ['status', 'الحالة']],
+  },
+  lateOnly: {
+    title: 'تقرير التأخيرات فقط',
+    subtitle: 'الموظفون المتأخرون عن موعد الدوام في الفترة المحددة',
+    endpoint: 'actual',
+    file: 'late-only',
+    pick: (r) => r.status === 'تأخير',
+    columns: [['code', 'الكود'], ['name', 'الاسم'], ['branch', 'الفرع'], ['date', 'التاريخ'], ['dayName', 'اليوم'], ['shift', 'الدوام'], ['checkIn', 'الحضور'], ['lateMinutes', 'التأخير (د)'], ['penalty', 'الجزاء المستحق']],
   },
   late: {
     title: 'تقرير التأخيرات والغياب',
     subtitle: 'عدد التأخيرات والغيابات وأيام الخصم لكل موظف',
     endpoint: 'late-absent',
     file: 'late-absence',
-    columns: [['code', 'الكود'], ['name', 'الاسم'], ['lateCount', 'عدد التأخيرات'], ['lateMinutes', 'إجمالي دقائق التأخير'], ['tier1', '06:15–06:35'], ['tier2', '06:36–06:55'], ['tier3', '06:56–07:30'], ['over', 'بعد 07:30'], ['deductionDays', 'أيام الخصم'], ['penalty', 'الجزاء المستحق'], ['absentCount', 'الغيابات']],
+    columns: [['code', 'الكود'], ['name', 'الاسم'], ['branch', 'الفرع'], ['lateCount', 'عدد التأخيرات'], ['lateMinutes', 'إجمالي دقائق التأخير'], ['tier1', '06:15–06:35'], ['tier2', '06:36–06:55'], ['tier3', '06:56–07:30'], ['over', 'بعد 07:30'], ['deductionDays', 'أيام الخصم'], ['penalty', 'الجزاء المستحق'], ['absentCount', 'الغيابات']],
   },
 };
 
@@ -45,14 +53,18 @@ export default function Report({ kind }) {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(true);
   const [range, setRange] = useState(null);
+  const [branches, setBranches] = useState([]);
+  const [branch, setBranch] = useState('');
 
-  async function run(f = from, t = to, e = emps) {
+  async function run(f = from, t = to, e = emps, b = branch) {
     setErr('');
     setBusy(true);
     try {
       const p = new URLSearchParams({ from: f, to: t });
       if (e.length) p.set('emps', e.join(','));
-      setData(await api(`/api/posting/${cfg.endpoint}?${p}`));
+      if (b) p.set('branches', b);
+      const rows = await api(`/api/posting/${cfg.endpoint}?${p}`);
+      setData(cfg.pick ? rows.filter(cfg.pick) : rows);
     } catch (x) {
       setErr(x.message);
       setData(null);
@@ -70,10 +82,12 @@ export default function Report({ kind }) {
         const r = { from: s.defaults.from, to: s.defaults.to, max: s.defaults.to };
         setRange(r);
         setEmployees(list);
+        setBranches(s.branches ?? []);
         setFrom(r.from);
         setTo(r.to);
         setEmps([]);
-        return run(r.from, r.to, []);
+        setBranch('');
+        return run(r.from, r.to, [], '');
       })
       .catch((x) => { setErr(x.message); setBusy(false); });
   }, [kind]);
@@ -85,6 +99,13 @@ export default function Report({ kind }) {
 
   const stats = useMemo(() => {
     if (!data) return null;
+    if (kind === 'lateOnly') {
+      return [
+        ['عدد التأخيرات', data.length, 'warning', 'clock'],
+        ['موظفون متأخرون', new Set(data.map((r) => r.code)).size, 'primary', 'users'],
+        ['إجمالي دقائق التأخير', data.reduce((a, r) => a + r.lateMinutes, 0), 'danger', 'alert'],
+      ];
+    }
     if (kind === 'actual') {
       return [
         ['السجلات', data.length, 'primary', 'file'],
@@ -123,6 +144,15 @@ export default function Report({ kind }) {
           <span>إلى</span>
           <input type="date" value={to} max={range?.max} onChange={(e) => setTo(e.target.value)} />
         </label>
+        {branches.length > 0 && (
+          <label className="fb-field">
+            <span>الفرع</span>
+            <select value={branch} onChange={(e) => setBranch(e.target.value)} disabled={branches.length === 1}>
+              {branches.length > 1 && <option value="">كل الفروع</option>}
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </label>
+        )}
         <button type="button" className={`btn ghost${showEmps ? ' pressed' : ''}`} onClick={() => setShowEmps((v) => !v)} aria-expanded={showEmps}>
           <Icon name="users" size={16} />{emps.length ? `${emps.length} موظف محدد` : 'كل الموظفين'}
         </button>
@@ -161,6 +191,7 @@ export default function Report({ kind }) {
         </div>
         {busy && <Loading />}
         {!busy && data && kind === 'actual' && <ActualTable rows={shown} emptyText="لا توجد مواعيد مرحّلة لهذه الفترة، رحّلها أولا من شاشة الترحيل" />}
+        {!busy && data && kind === 'lateOnly' && <ActualTable rows={shown} emptyText="لا توجد تأخيرات في هذه الفترة" />}
         {!busy && data && kind === 'late' && <LateTable rows={shown} />}
       </section>
     </>

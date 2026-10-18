@@ -20,34 +20,45 @@ const NAV = [
   { group: '', items: [{ to: '/', label: 'لوحة المتابعة', icon: 'chart', end: true }] },
   { group: 'الموارد البشرية', items: [
     { to: '/employees', label: 'الموظفين', icon: 'users' },
-    { to: '/import', label: 'رفع موظفين Excel', icon: 'upload' },
-    { to: '/holidays', label: 'العطلات الرسمية', icon: 'calendar' },
+    { to: '/import', label: 'رفع موظفين Excel', icon: 'upload', admin: true },
+    { to: '/holidays', label: 'العطلات الرسمية', icon: 'calendar', admin: true },
   ] },
   { group: 'الحضور والانصراف', items: [
-    { to: '/pull', label: 'سحب البصمة', icon: 'fingerprint' },
+    { to: '/pull', label: 'سحب البصمة', icon: 'fingerprint', admin: true },
     { to: '/posting', label: 'ترحيل المواعيد الفعلية', icon: 'clock' },
   ] },
   { group: 'التقارير', items: [
     { to: '/reports/actual', label: 'المواعيد الفعلية', icon: 'clock' },
     { to: '/reports/late', label: 'التأخيرات والغياب', icon: 'alert' },
+    { to: '/reports/late-only', label: 'التأخيرات فقط', icon: 'clock' },
   ] },
 ];
 
 function Shell({ user, logout }) {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem('sidebar-collapsed') === '1'; } catch { return false; }
+  });
   const { pathname } = useLocation();
   useEffect(() => setOpen(false), [pathname]);
+  const toggleMenu = () => {
+    if (window.matchMedia('(max-width: 960px)').matches) return setOpen((o) => !o);
+    setCollapsed((c) => {
+      try { localStorage.setItem('sidebar-collapsed', c ? '0' : '1'); } catch { /* storage unavailable */ }
+      return !c;
+    });
+  };
   const initial = (user.name || user.username || '?').trim().charAt(0);
 
   return (
-    <div className="shell">
+    <div className={`shell${collapsed ? ' collapsed' : ''}`}>
       <aside className={`sidebar${open ? ' open' : ''}`}>
         <div className="brand">
           <div className="brand-mark"><Icon name="fingerprint" size={22} /></div>
           <div><b>الحضور والانصراف</b><span>نظام الموارد البشرية</span></div>
         </div>
         <nav className="side-nav">
-          {NAV.map((g) => (
+          {NAV.map((g) => ({ ...g, items: g.items.filter((i) => !i.admin || user.isAdmin) })).filter((g) => g.items.length).map((g) => (
             <div key={g.group}>
               {g.group && <div className="side-group">{g.group}</div>}
               {g.items.map((i) => (
@@ -65,7 +76,7 @@ function Shell({ user, logout }) {
       <div className={`scrim${open ? ' open' : ''}`} onClick={() => setOpen(false)} />
       <div className="content">
         <div className="topbar">
-          <button className="icon-btn" onClick={() => setOpen(true)} aria-label="القائمة"><Icon name="menu" /></button>
+          <button className="icon-btn" onClick={toggleMenu} aria-label="فتح أو إغلاق القائمة" aria-expanded={!collapsed}><Icon name="menu" /></button>
           <b>الحضور والانصراف</b>
         </div>
         <main className="page">
@@ -73,13 +84,14 @@ function Shell({ user, logout }) {
             <Route path="/" element={<Dashboard />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/employees/:code" element={<EmployeeDetails />} />
-            <Route path="/lookups" element={<Lookups />} />
-            <Route path="/import" element={<ImportEmployees />} />
-            <Route path="/holidays" element={<Holidays />} />
-            <Route path="/pull" element={<Pull />} />
+            {user.isAdmin && <Route path="/lookups" element={<Lookups />} />}
+            {user.isAdmin && <Route path="/import" element={<ImportEmployees />} />}
+            {user.isAdmin && <Route path="/holidays" element={<Holidays />} />}
+            {user.isAdmin && <Route path="/pull" element={<Pull />} />}
             <Route path="/reports" element={<Navigate to="/reports/actual" replace />} />
             <Route path="/reports/actual" element={<Report kind="actual" />} />
             <Route path="/reports/late" element={<Report kind="late" />} />
+            <Route path="/reports/late-only" element={<Report kind="lateOnly" />} />
             <Route path="/posting" element={<Posting />} />
           </Routes>
         </main>
