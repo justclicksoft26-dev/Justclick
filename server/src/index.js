@@ -30,6 +30,13 @@ app.post('/api/agent/punches', express.json({ limit: '2mb' }), async (req, res, 
     const v = validatePunches(req.body?.punches);
     if (v.error) return res.status(400).json({ message: v.error });
     const r = await storePunches(v.rows);
+    let from = '';
+    try {
+      from = decodeURIComponent(req.get('x-agent-name') ?? '').slice(0, 60); // which branch / computer sent it
+    } catch {
+      from = '';
+    }
+    console.log(`agent punches${from ? ` from "${from}"` : ''}: received ${r.received}, stored ${r.stored}`);
     res.json({ received: r.received, stored: r.stored, ignored: r.received - r.stored });
   } catch (e) {
     next(e);

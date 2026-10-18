@@ -102,3 +102,27 @@ test('errorText explains ZKError-like objects, plain errors and strings', () => 
   assert.equal(errorText(new Error('x')), 'x');
   assert.equal(errorText('boom'), 'boom');
 });
+
+test('several devices: all are read, one failing does not stop the others, counts are per device', async () => {
+  const store = openStore(':memory:');
+  const sent = [];
+  const devices = [
+    { name: 'A', fetch: async () => [L('1', day(1)), L('2', day(1))] },
+    { name: 'B', fetch: async () => { throw new Error('unreachable'); } },
+    { name: 'C', fetch: async () => [L('3', day(2))] },
+  ];
+  const r = await syncOnce({ devices, send: async (b) => (sent.push(...b), { stored: b.length }), store });
+  assert.equal(sent.length, 3);
+  assert.deepEqual(r.devices.map((d) => [d.name, d.read, d.added, !!d.error]), [['A', 2, 2, false], ['B', 0, 0, true], ['C', 1, 1, false]]);
+  assert.equal(r.deviceError.message, 'unreachable');
+  assert.equal(r.read, 3);
+});
+
+test('several devices: the same punch seen on two devices is stored and sent once', async () => {
+  const store = openStore(':memory:');
+  const sent = [];
+  const same = async () => [L('1', day(1))];
+  const r = await syncOnce({ devices: [{ name: 'A', fetch: same }, { name: 'B', fetch: same }], send: async (b) => (sent.push(...b), { stored: b.length }), store });
+  assert.equal(sent.length, 1);
+  assert.deepEqual(r.devices.map((d) => d.added), [1, 0]);
+});
