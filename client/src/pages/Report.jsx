@@ -82,12 +82,15 @@ export default function Report({ kind }) {
         const r = { from: s.defaults.from, to: s.defaults.to, max: s.defaults.to };
         setRange(r);
         setEmployees(list);
-        setBranches(s.branches ?? []);
+        const bl = s.branches ?? [];
+        setBranches(bl);
+        // admin: all branches (changeable); branch user: their own branch is the only choice
+        const def = bl.length === 1 ? String(bl[0].id) : '';
         setFrom(r.from);
         setTo(r.to);
         setEmps([]);
-        setBranch('');
-        return run(r.from, r.to, [], '');
+        setBranch(def);
+        return run(r.from, r.to, [], def);
       })
       .catch((x) => { setErr(x.message); setBusy(false); });
   }, [kind]);
