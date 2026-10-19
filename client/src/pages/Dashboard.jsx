@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Loading from '../Loading.jsx';
-import { api, ATT_TONE, clampToday, norm, today } from '../api.js';
+import { api, ATT_TONE, norm } from '../api.js';
 import { Alert, Badge, Empty, Icon, PageHeader, Stat } from '../components/ui.jsx';
 
 const SEGMENTS = [
@@ -61,7 +61,7 @@ export default function Dashboard() {
         {data.date && (
           <label className="fb-field inline">
             <span>اليوم</span>
-            <input type="date" value={data.date} max={today()} onChange={(e) => e.target.value && setPicked(clampToday(e.target.value))} />
+            <input type="date" value={data.date} onChange={(e) => e.target.value && setPicked(e.target.value)} />
           </label>
         )}
       </PageHeader>

@@ -335,3 +335,5 @@ img, svg { max-width: 100%; }
   .col-opt { display: none; }
 }
 td.wrap { white-space: normal; min-width: 130px; }
+.count-link { display: inline-block; min-width: 28px; padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--primary); font-weight: 700; text-decoration: none; }
+.count-link:hover { background: var(--primary); color: #fff; }

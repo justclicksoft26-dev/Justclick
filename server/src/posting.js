@@ -189,7 +189,7 @@ export function summarizeLateAbsent(rows, activeCodes) {
     if (!activeCodes.has(r.code)) continue;
     const s = by.get(r.code) ?? {
       code: r.code, name: r.name, branch: r.branch, lateCount: 0, lateMinutes: 0, absentCount: 0,
-      tier1: 0, tier2: 0, tier3: 0, over: 0, deductionDays: 0, penalty: '-',
+      tier1: 0, tier2: 0, tier3: 0, over: 0, b15: 0, b30: 0, b120: 0, bOver: 0, deductionDays: 0, penalty: '-',
     };
     if (r.status === 'تأخير') {
       s.lateCount++;
@@ -199,6 +199,11 @@ export function summarizeLateAbsent(rows, activeCodes) {
       else if (m <= LATE_TIERS.t2Max) s.tier2++;
       else if (m <= LATE_TIERS.t3Max) s.tier3++;
       else s.over++;
+      // report columns: late by up to 15 min / 15-30 / 30 min-2 h / over 2 h
+      if (m <= 15) s.b15++;
+      else if (m <= 30) s.b30++;
+      else if (m <= 120) s.b120++;
+      else s.bOver++;
     } else if (r.status === 'غائب') {
       s.absentCount++;
     }

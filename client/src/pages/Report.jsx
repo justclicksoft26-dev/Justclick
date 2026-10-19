@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, clampToday, norm, today } from '../api.js';
+import { api, norm, today } from '../api.js';
 import Loading from '../Loading.jsx';
-import { ActualTable, LateTable } from '../components/AttendanceTables.jsx';
+import { ActualTable, LATE_BANDS, LateTable, inBand } from '../components/AttendanceTables.jsx';
 import { Alert, Icon, OptionPicker, PageHeader, Spinner, Stat } from '../components/ui.jsx';
 
 const REPORTS = {
@@ -55,8 +55,12 @@ export default function Report({ kind }) {
   const [range, setRange] = useState(null);
   const [branches, setBranches] = useState([]);
   const [branch, setBranch] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [band, setBand] = useState('');
+  // the filters of the last run: the late-report links carry these, not whatever is half-typed in the form
+  const [applied, setApplied] = useState({ from: '', to: '', branch: '' });
 
-  async function run(f = from, t = to, e = emps, b = branch) {
+  async function run(f = from, t = to, e = emps, b = branch, bd = band) {
     setErr('');
     setBusy(true);
     try {
@@ -64,7 +68,8 @@ export default function Report({ kind }) {
       if (e.length) p.set('emps', e.join(','));
       if (b) p.set('branches', b);
       const rows = await api(`/api/posting/${cfg.endpoint}?${p}`);
-      setData(cfg.pick ? rows.filter(cfg.pick) : rows);
+      setApplied({ from: f, to: t, branch: b });
+      setData(cfg.pick ? rows.filter((r) => cfg.pick(r) && inBand(r.lateMinutes, bd)) : rows);
     } catch (x) {
       setErr(x.message);
       setData(null);
@@ -79,18 +84,25 @@ export default function Report({ kind }) {
     setQ('');
     Promise.all([api('/api/posting/setup'), api('/api/employees')])
       .then(([s, list]) => {
-        const r = { from: today(), to: today(), max: today() };
+        // opened from a link (late report -> day list) the URL carries the filters; otherwise today, everyone
+        const sp = new URLSearchParams(window.location.search);
+        const r = { from: sp.get('from') || today(), to: sp.get('to') || today() };
         setRange(r);
         setEmployees(list);
         const bl = s.branches ?? [];
         setBranches(bl);
+        setIsAdmin(!!s.isAdmin);
         // admin: all branches (changeable); branch user: their own branch is the only choice
-        const def = bl.length === 1 ? String(bl[0].id) : '';
+        const def = bl.length === 1 && !s.isAdmin ? String(bl[0].id) : sp.get('branch') || '';
+        const pickedEmps = (sp.get('emps') || '').split(',').filter(Boolean);
+        const bd = LATE_BANDS.some((x) => x.key === sp.get('band')) ? sp.get('band') : '';
         setFrom(r.from);
         setTo(r.to);
-        setEmps([]);
+        setEmps(pickedEmps);
+        setShowEmps(false);
         setBranch(def);
-        return run(r.from, r.to, [], def);
+        setBand(bd);
+        return run(r.from, r.to, pickedEmps, def, bd);
       })
       .catch((x) => { setErr(x.message); setBusy(false); });
   }, [kind]);
@@ -141,17 +153,17 @@ export default function Report({ kind }) {
       <form className="filterbar" onSubmit={submit}>
         <label className="fb-field">
           <span>من</span>
-          <input type="date" value={from} max={today()} onChange={(e) => setFrom(clampToday(e.target.value))} />
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
         <label className="fb-field">
           <span>إلى</span>
-          <input type="date" value={to} max={today()} onChange={(e) => setTo(clampToday(e.target.value))} />
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
-        {branches.length > 0 && (
+        {(isAdmin || branches.length > 0) && (
           <label className="fb-field">
             <span>الفرع</span>
-            <select value={branch} onChange={(e) => setBranch(e.target.value)} disabled={branches.length === 1}>
-              {branches.length > 1 && <option value="">كل الفروع</option>}
+            <select value={branch} onChange={(e) => setBranch(e.target.value)} disabled={!isAdmin && branches.length === 1}>
+              {(isAdmin || branches.length > 1) && <option value="">كل الفروع</option>}
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
@@ -159,6 +171,11 @@ export default function Report({ kind }) {
         <button type="button" className={`btn ghost${showEmps ? ' pressed' : ''}`} onClick={() => setShowEmps((v) => !v)} aria-expanded={showEmps}>
           <Icon name="users" size={16} />{emps.length ? `${emps.length} موظف محدد` : 'كل الموظفين'}
         </button>
+        {band && (
+          <button type="button" className="btn ghost pressed" onClick={() => { setBand(''); run(from, to, emps, branch, ''); }} title="إلغاء تصفية الفئة">
+            {LATE_BANDS.find((x) => x.key === band)?.label} ✕
+          </button>
+        )}
         <button className="btn" disabled={busy || !from || !to}>{busy ? <Spinner /> : <Icon name="search" size={16} />}عرض</button>
       </form>
 
@@ -195,7 +212,12 @@ export default function Report({ kind }) {
         {busy && <Loading />}
         {!busy && data && kind === 'actual' && <ActualTable rows={shown} emptyText="لا توجد مواعيد مرحّلة لهذه الفترة، رحّلها أولا من شاشة الترحيل" />}
         {!busy && data && kind === 'lateOnly' && <ActualTable rows={shown} emptyText="لا توجد تأخيرات في هذه الفترة" />}
-        {!busy && data && kind === 'late' && <LateTable rows={shown} />}
+        {!busy && data && kind === 'late' && (
+          <LateTable
+            rows={shown}
+            link={(r, b) => `/reports/late-only?${new URLSearchParams({ from: applied.from, to: applied.to, emps: r.code, band: b, ...(applied.branch ? { branch: applied.branch } : {}) })}`}
+          />
+        )}
       </section>
     </>
   );
