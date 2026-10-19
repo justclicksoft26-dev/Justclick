@@ -84,6 +84,7 @@ export async function postActualTimes(filters) {
           `BEGIN POST_IO_EMP_PRC(:e, TO_DATE(:f,'YYYY-MM-DD'), TO_DATE(:t,'YYYY-MM-DD'), :x); END;`,
           { e: e.id, f: start, t: end, x: hr.X },
         );
+        await clearFreeLate(exec, e.id, start, end);
         posted.push(e.id);
       } catch (err) {
         await exec('ROLLBACK TO emp_sp');
@@ -92,6 +93,23 @@ export async function postActualTimes(filters) {
     }
     return { employees: emps.length, posted: posted.length, skipped };
   });
+}
+
+// A punch up to this many minutes after the shift start is on time, whatever the employee's own grace is.
+export const FREE_LATE_MIN = 15;
+
+const minOfDay = (c) => `(TO_NUMBER(TO_CHAR(${c},'HH24')) * 60 + TO_NUMBER(TO_CHAR(${c},'MI')))`;
+
+/** The ERP flags any minute past the shift start as late (IN_FLAG 1); turn the ones within the free window back into attended (111). */
+export async function clearFreeLate(exec, empId, from, to) {
+  const r = await exec(
+    `UPDATE EMP_IO_TIMES SET IN_FLAG = 111, IN_DESC = 'IN_OUT', LATE_IN = NULL
+      WHERE IN_FLAG = 1 AND PERMESSION_TIME_IN IS NULL AND IN_TIME IS NOT NULL
+        AND ${minOfDay('IN_TIME')} - ${minOfDay('SHIFT_DATE_FROM')} <= :free
+        ${empId == null ? '' : "AND EMP_ID = :e AND FROM_IO_DATE BETWEEN TO_DATE(:f,'YYYY-MM-DD') AND TO_DATE(:t,'YYYY-MM-DD')"}`,
+    empId == null ? { free: FREE_LATE_MIN } : { free: FREE_LATE_MIN, e: empId, f: from, t: to },
+  );
+  return r.rowsAffected;
 }
 
 const toMin = (s) => (s ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3)) : null);
@@ -103,7 +121,7 @@ export function describe(r, grace) {
   const out = { lateMinutes: 0, status: IN_LABEL[r.IN_FLAG] ?? 'حاضر' };
   if (r.IN_FLAG === 1) {
     const mins = toMin(r.IN_T) - toMin(r.SHIFT_F);
-    if (mins > grace) {
+    if (mins > Math.max(grace, FREE_LATE_MIN)) {
       out.lateMinutes = mins;
       out.status = 'تأخير';
     } else {
@@ -118,7 +136,11 @@ export async function getActualTimes(filters) {
   const { from, to } = filters;
   const emps = await selectEmployees(filters);
   if (!emps.length) return [];
-  const binds = { f: from, t: to };
+  // the every-3rd-time rule counts inside the HR period (HR_SYS_INFO), not inside the report filter,
+  // so rows are read from the period start and trimmed to the filter after the penalties are set
+  const { PS: ps } = (await query(`SELECT ${ymd('MONTH_START_DATE')} PS FROM HR_SYS_INFO FETCH FIRST 1 ROW ONLY`)).rows[0] ?? {};
+  const readFrom = ps && ps < from ? ps : from;
+  const binds = { f: readFrom, t: to };
   emps.forEach((e, i) => { binds[`i${i}`] = e.id; });
   const { rows } = await query(
     `SELECT x.EMP_ID, TRIM(e.EMP_NAME_AR) NAME, e.BRANCH_ID, TRIM(br.BRANCH_NAME_AR) BRANCH, ${ymd('x.FROM_IO_DATE')} D, ${hhmm('x.IN_TIME')} IN_T, ${hhmm('x.OUT_TIME')} OUT_T,
@@ -132,9 +154,23 @@ export async function getActualTimes(filters) {
     binds,
   );
   const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-  return rows.map((r) => {
+  const firstTier = new Map(); // first-tier late days seen so far per employee and period: the deduction lands on every 3rd
+  const all = rows.map((r) => {
     const d = describe(r, r.GRACE);
+    let days = 0;
+    if (d.lateMinutes) {
+      if (d.lateMinutes <= LATE_TIERS.t1Max) {
+        const key = `${r.EMP_ID}|${ps && r.D >= ps ? 'period' : 'before'}`;
+        const n = (firstTier.get(key) ?? 0) + 1;
+        firstTier.set(key, n);
+        days = n % 3 === 0 ? 0.5 : 0;
+      } else {
+        days = latePenalty(d.lateMinutes);
+      }
+    }
+    const penalty = penaltyText(days);
     return {
+      days,
       code: String(r.EMP_ID),
       name: r.NAME,
       branch: r.BRANCH ?? '',
@@ -145,9 +181,10 @@ export async function getActualTimes(filters) {
       shift: r.SHIFT_F ? `${r.SHIFT_F} - ${r.SHIFT_T}` : null,
       lateMinutes: d.lateMinutes,
       status: d.status,
-      penalty: d.lateMinutes ? (d.lateMinutes <= LATE_TIERS.t1Max ? 'ضمن 3 مرات = نصف يوم' : penaltyText(latePenalty(d.lateMinutes))) : '-',
+      penalty,
     };
   });
+  return all.filter((r) => r.date >= from);
 }
 
 /** Penalty in days -> Arabic text (0.5 = نصف يوم, 1.5 = يوم ونصف ...). */
@@ -164,7 +201,7 @@ export function penaltyText(days) {
 
 /**
  * Late penalty rule (minutes after the shift start, shift 06:00):
- *  - 15–35 min  (06:15–06:35): every 3 times = نصف يوم
+ *  - up to 15 min is not late; 16–35 min (06:16–06:35): every 3 times = نصف يوم
  *  - 36–55 min  (06:36–06:55): each time = ربع يوم
  *  - 56–90 min  (06:56–07:30): each time = نصف يوم
  *  - over 90 min (after 07:30): not covered by the rule, counted as يوم كامل
@@ -189,19 +226,19 @@ export function summarizeLateAbsent(rows, activeCodes) {
     if (!activeCodes.has(r.code)) continue;
     const s = by.get(r.code) ?? {
       code: r.code, name: r.name, branch: r.branch, lateCount: 0, lateMinutes: 0, absentCount: 0,
-      tier1: 0, tier2: 0, tier3: 0, over: 0, b15: 0, b30: 0, b120: 0, bOver: 0, deductionDays: 0, penalty: '-',
+      tier1: 0, tier2: 0, tier3: 0, over: 0, days: 0, b30: 0, b120: 0, bOver: 0, deductionDays: 0, penalty: '-',
     };
     if (r.status === 'تأخير') {
       s.lateCount++;
       s.lateMinutes += r.lateMinutes;
+      s.days += r.days;
       const m = r.lateMinutes;
       if (m <= LATE_TIERS.t1Max) s.tier1++;
       else if (m <= LATE_TIERS.t2Max) s.tier2++;
       else if (m <= LATE_TIERS.t3Max) s.tier3++;
       else s.over++;
-      // report columns: late by up to 15 min / 15-30 / 30 min-2 h / over 2 h
-      if (m <= 15) s.b15++;
-      else if (m <= 30) s.b30++;
+      // report columns: late 15-30 min / 30 min-2 h / over 2 h (up to 15 min is not late)
+      if (m <= 30) s.b30++;
       else if (m <= 120) s.b120++;
       else s.bOver++;
     } else if (r.status === 'غائب') {
@@ -210,8 +247,8 @@ export function summarizeLateAbsent(rows, activeCodes) {
     by.set(r.code, s);
   }
   return [...by.values()].map((s) => {
-    const deductionDays = lateDeduction(s);
-    return { ...s, deductionDays, penalty: penaltyText(deductionDays) };
+    const { days, ...rest } = s;
+    return { ...rest, deductionDays: days, penalty: penaltyText(days) };
   });
 }
 

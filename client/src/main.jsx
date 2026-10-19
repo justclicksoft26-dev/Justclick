@@ -89,9 +89,9 @@ function Shell({ user, logout }) {
             {user.isAdmin && <Route path="/holidays" element={<Holidays />} />}
             {user.isAdmin && <Route path="/pull" element={<Pull />} />}
             <Route path="/reports" element={<Navigate to="/reports/actual" replace />} />
-            <Route path="/reports/actual" element={<Report kind="actual" />} />
-            <Route path="/reports/late" element={<Report kind="late" />} />
-            <Route path="/reports/late-only" element={<Report kind="lateOnly" />} />
+            <Route path="/reports/actual" element={<Report key="actual" kind="actual" />} />
+            <Route path="/reports/late" element={<Report key="late" kind="late" />} />
+            <Route path="/reports/late-only" element={<Report key="lateOnly" kind="lateOnly" />} />
             <Route path="/posting" element={<Posting />} />
           </Routes>
         </main>

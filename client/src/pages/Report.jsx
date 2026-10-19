@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api, clampToday, norm, today } from '../api.js';
 import Loading from '../Loading.jsx';
 import { ActualTable, LATE_BANDS, LateTable, inBand } from '../components/AttendanceTables.jsx';
@@ -25,7 +26,7 @@ const REPORTS = {
     subtitle: 'عدد التأخيرات والغيابات وأيام الخصم لكل موظف',
     endpoint: 'late-absent',
     file: 'late-absence',
-    columns: [['code', 'الكود'], ['name', 'الاسم'], ['branch', 'الفرع'], ['lateCount', 'عدد التأخيرات'], ['lateMinutes', 'إجمالي دقائق التأخير'], ['tier1', '06:15–06:35'], ['tier2', '06:36–06:55'], ['tier3', '06:56–07:30'], ['over', 'بعد 07:30'], ['deductionDays', 'أيام الخصم'], ['penalty', 'الجزاء المستحق'], ['absentCount', 'الغيابات']],
+    columns: [['code', 'الكود'], ['name', 'الاسم'], ['branch', 'الفرع'], ['lateCount', 'عدد التأخيرات'], ['lateMinutes', 'إجمالي دقائق التأخير'], ['tier1', '06:16–06:35'], ['tier2', '06:36–06:55'], ['tier3', '06:56–07:30'], ['over', 'بعد 07:30'], ['deductionDays', 'أيام الخصم'], ['penalty', 'الجزاء المستحق'], ['absentCount', 'الغيابات']],
   },
 };
 
@@ -43,6 +44,7 @@ function downloadCsv(cfg, rows, from, to) {
 
 export default function Report({ kind }) {
   const cfg = REPORTS[kind];
+  const { search } = useLocation();
   const [employees, setEmployees] = useState([]);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -85,7 +87,7 @@ export default function Report({ kind }) {
     Promise.all([api('/api/posting/setup'), api('/api/employees')])
       .then(([s, list]) => {
         // opened from a link (late report -> day list) the URL carries the filters; otherwise today, everyone
-        const sp = new URLSearchParams(window.location.search);
+        const sp = new URLSearchParams(search);
         const r = { from: sp.get('from') || today(), to: sp.get('to') || today() };
         setRange(r);
         setEmployees(list);
@@ -105,7 +107,7 @@ export default function Report({ kind }) {
         return run(r.from, r.to, pickedEmps, def, bd);
       })
       .catch((x) => { setErr(x.message); setBusy(false); });
-  }, [kind]);
+  }, [kind, search]);
 
   const shown = useMemo(() => {
     const n = norm(q.trim());

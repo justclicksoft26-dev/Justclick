@@ -1,4 +1,4 @@
-// Puts every employee on the 06:00 - 13:30 shift and sets the late grace to 14 min (so 06:15 counts as late).
+// Puts every employee on the 06:00 - 13:30 shift and sets the late grace to 14 min (kept for reference; up to 15 min late is never counted as late).
 //   node src/set-default-shift.js               -> effective from today (older shift history is kept)
 //   node src/set-default-shift.js 2026-10-01    -> effective from that date
 import { withTransaction } from './db.js';
