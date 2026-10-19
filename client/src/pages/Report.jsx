@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, norm, today } from '../api.js';
+import { api, clampToday, norm, today } from '../api.js';
 import Loading from '../Loading.jsx';
 import { ActualTable, LATE_BANDS, LateTable, inBand } from '../components/AttendanceTables.jsx';
 import { Alert, Icon, OptionPicker, PageHeader, Spinner, Stat } from '../components/ui.jsx';
@@ -153,11 +153,11 @@ export default function Report({ kind }) {
       <form className="filterbar" onSubmit={submit}>
         <label className="fb-field">
           <span>من</span>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input type="date" value={from} max={today()} onChange={(e) => setFrom(clampToday(e.target.value))} />
         </label>
         <label className="fb-field">
           <span>إلى</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <input type="date" value={to} max={today()} onChange={(e) => setTo(clampToday(e.target.value))} />
         </label>
         {(isAdmin || branches.length > 0) && (
           <label className="fb-field">

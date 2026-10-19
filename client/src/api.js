@@ -34,6 +34,9 @@ export const today = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
+// A typed date past today is pulled back to today (the picker's max only stops clicks, not typing).
+export const clampToday = (v) => (v && v > today() ? today() : v);
+
 export const daysAgo = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n);
