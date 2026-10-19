@@ -18,6 +18,15 @@ export function localToday() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// Newest date a request may name. The server clock can run a day behind the user's (UTC host, user ahead of it),
+// so "today" on the user's side is accepted too; the screens themselves stop at the user's own today.
+export function latestDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function toMinutes(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;

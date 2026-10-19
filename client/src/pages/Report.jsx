@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, norm } from '../api.js';
+import { api, clampToday, norm, today } from '../api.js';
 import Loading from '../Loading.jsx';
 import { ActualTable, LateTable } from '../components/AttendanceTables.jsx';
 import { Alert, Icon, OptionPicker, PageHeader, Spinner, Stat } from '../components/ui.jsx';
@@ -79,7 +79,7 @@ export default function Report({ kind }) {
     setQ('');
     Promise.all([api('/api/posting/setup'), api('/api/employees')])
       .then(([s, list]) => {
-        const r = { from: s.defaults.from, to: s.defaults.to, max: s.defaults.to };
+        const r = { from: today(), to: today(), max: today() };
         setRange(r);
         setEmployees(list);
         const bl = s.branches ?? [];
@@ -141,11 +141,11 @@ export default function Report({ kind }) {
       <form className="filterbar" onSubmit={submit}>
         <label className="fb-field">
           <span>من</span>
-          <input type="date" value={from} max={range?.max} onChange={(e) => setFrom(e.target.value)} />
+          <input type="date" value={from} max={today()} onChange={(e) => setFrom(clampToday(e.target.value))} />
         </label>
         <label className="fb-field">
           <span>إلى</span>
-          <input type="date" value={to} max={range?.max} onChange={(e) => setTo(e.target.value)} />
+          <input type="date" value={to} max={today()} onChange={(e) => setTo(clampToday(e.target.value))} />
         </label>
         {branches.length > 0 && (
           <label className="fb-field">

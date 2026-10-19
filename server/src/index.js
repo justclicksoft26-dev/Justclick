@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import ZKLib from 'node-zklib';
-import { validateEmployee, validateEmployeeUpdate, parsePunchCsv, validatePunches, isValidDate, localToday } from './validation.js';
+import { validateEmployee, validateEmployeeUpdate, parsePunchCsv, validatePunches, isValidDate, latestDate, localToday } from './validation.js';
 import { getActualTimes, getDefaults, getLookups, getPostedRange, postActualTimes, summarizeLateAbsent } from './posting.js';
 import { getDashboard } from './dashboard.js';
 import { LOOKUP_TYPES, allOptions, createValue, deleteValue, Duplicate, listTypes, listValues, typeById, updateValue, validateLookup } from './lookups.js';
@@ -189,7 +189,7 @@ app.delete('/api/lookups/:type/:id', requireAdmin, wrap(async (req, res) => {
 // ---------- dashboard ----------
 app.get('/api/dashboard', wrap(async (req, res) => {
   const date = req.query.date ? String(req.query.date) : '';
-  if (date && (!isValidDate(date) || date > localToday())) return res.status(400).json({ message: 'تاريخ غير صحيح' });
+  if (date && (!isValidDate(date) || date > latestDate())) return res.status(400).json({ message: 'تاريخ غير صحيح' });
   res.json(await getDashboard(date, branchesFor(req, req.query.branches)));
 }));
 
@@ -272,7 +272,7 @@ const filtersFrom = (src) => ({
 });
 const checkRange = ({ from, to }) => {
   if (!isValidDate(from) || !isValidDate(to) || from > to) return 'اختار فترة صحيحة';
-  if (to > localToday()) return 'لا يمكن اختيار تاريخ في المستقبل';
+  if (to > latestDate()) return 'لا يمكن اختيار تاريخ في المستقبل';
   return null;
 };
 

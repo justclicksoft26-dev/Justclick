@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, dayLabel } from '../api.js';
+import { api, clampToday, dayLabel, today } from '../api.js';
 import Loading from '../Loading.jsx';
 import { ActualTable, LateTable } from '../components/AttendanceTables.jsx';
 import { Alert, Badge, Field, Icon, OptionPicker, PageHeader, Spinner, notify } from '../components/ui.jsx';
@@ -27,14 +27,14 @@ export default function Posting() {
       .then(([s, e]) => {
         setSetup(s);
         setEmployees(e);
-        setF((x) => ({ ...x, from: s.defaults.from, to: s.defaults.to }));
+        setF((x) => ({ ...x, from: today(), to: today() }));
       })
       .catch((e) => setErr(e.message));
   }, []);
 
   const names = Object.fromEntries(employees.map((e) => [e.code, e.name]));
   const set = (k) => (e) => {
-    const v = e.target.value;
+    const v = clampToday(e.target.value);
     setF((x) => ({ ...x, [k]: v }));
   };
 
@@ -82,8 +82,8 @@ export default function Posting() {
       <form className="card" onSubmit={post}>
         <div className="form-section">الفترة</div>
         <div className="grid two">
-          <Field label="من تاريخ"><input type="date" value={f.from} max={setup?.defaults.to} onChange={set('from')} /></Field>
-          <Field label="إلى تاريخ"><input type="date" value={f.to} max={setup?.defaults.to} onChange={set('to')} /></Field>
+          <Field label="من تاريخ"><input type="date" value={f.from} max={today()} onChange={set('from')} /></Field>
+          <Field label="إلى تاريخ"><input type="date" value={f.to} max={today()} onChange={set('to')} /></Field>
         </div>
 
         <div className="form-section">تحديد الموظفين <span className="muted">(اختياري)</span></div>

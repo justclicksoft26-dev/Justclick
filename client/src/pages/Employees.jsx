@@ -93,7 +93,7 @@ function EmployeeForm({ onClose, onSaved }) {
             </select>
           </Field>
           <Field label="تاريخ التعيين" error={errors.hireDate}>
-            <input type="date" value={form.hireDate} onChange={set('hireDate')} />
+            <input type="date" value={form.hireDate} max={today()} onChange={set('hireDate')} />
           </Field>
           <Field label="الحالة" error={errors.status}>
             <select value={form.status} onChange={set('status')}>
@@ -198,20 +198,20 @@ export default function Employees() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>الكود</th><th>الاسم</th><th>الفرع</th><th>الإدارة</th><th>الوظيفة</th><th>الهوية</th><th>الحالة</th><th>الدوام</th><th>الإجازة الأسبوعية</th><th /></tr>
+                <tr><th>الكود</th><th>الاسم</th><th>الفرع</th><th>الإدارة</th><th>الوظيفة</th><th>الهوية</th><th>الحالة</th><th className="col-opt">الدوام</th><th className="col-opt">الإجازة الأسبوعية</th><th /></tr>
               </thead>
               <tbody>
                 {shown.map((e) => (
                   <tr key={e.code}>
                     <td className="mono strong">{e.code}</td>
                     <td className="strong"><Link className="row-link" to={`/employees/${e.code}`}>{e.name}</Link></td>
-                    <td>{e.branch || '-'}</td>
+                    <td className="wrap">{e.branch || '-'}</td>
                     <td>{e.dept || '-'}</td>
                     <td>{e.job || '-'}</td>
                     <td className="mono">{e.nationalId || '-'}</td>
                     <td><Badge tone={STATUS_TONE[e.status]}>{e.statusLabel}</Badge></td>
-                    <td dir="ltr" className="mono">{e.shiftStart ? `${e.shiftStart} - ${e.shiftEnd}` : '-'}</td>
-                    <td>
+                    <td dir="ltr" className="mono col-opt">{e.shiftStart ? `${e.shiftStart} - ${e.shiftEnd}` : '-'}</td>
+                    <td className="col-opt">
                       {e.weeklyOff.length
                         ? <div className="tag-list">{e.weeklyOff.map((d) => <span key={d} className="tag">{dayLabel(d)}</span>)}</div>
                         : '-'}

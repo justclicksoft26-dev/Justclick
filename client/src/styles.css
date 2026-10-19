@@ -287,3 +287,51 @@ textarea { resize: vertical; }
   .type-list { position: static; display: flex; overflow-x: auto; padding: 6px; gap: 4px; }
   .type-item { width: auto; white-space: nowrap; gap: 8px; }
 }
+
+/* ---------- responsive refinements (kept last so they win over the base rules above) ---------- */
+.card, .grid > *, .split > *, .dash-row > * { min-width: 0; }
+.fb-field select { padding: 7px 10px; width: 170px; min-width: 0; color: var(--text); font-weight: 400; }
+img, svg { max-width: 100%; }
+
+@media (max-width: 1180px) {
+  .page { padding-inline: 22px; }
+}
+@media (max-width: 960px) {
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .toolbar .search { flex: 1 1 220px; }
+  .filterbar { padding: 12px; }
+}
+@media (max-width: 640px) {
+  .page { padding: 14px 12px 36px; }
+  .page-head { align-items: stretch; margin-bottom: 16px; }
+  .page-head-actions, .page-head > .btn { width: 100%; }
+  .page-head-actions .btn, .page-head > .btn { flex: 1; justify-content: center; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stats.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filterbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; }
+  .filterbar .fb-field { min-width: 0; }
+  .filterbar .fb-field input, .filterbar .fb-field select { width: 100%; }
+  .filterbar .fb-field:has(select), .filterbar > .btn { grid-column: 1 / -1; justify-content: center; }
+  .fb-field.inline { width: 100%; }
+  .fb-field.inline input { flex: 1; width: auto; }
+  .toolbar { gap: 10px; padding: 12px; }
+  .toolbar select { flex: 1 1 140px; width: auto; }
+  .result-count { margin-inline-start: 0; flex-basis: 100%; }
+  .trend { gap: 3px; height: 160px; }
+  .trend-col small { font-size: 9.5px; }
+  .trend-col:nth-child(even) small { visibility: hidden; }
+  .dist-row { grid-template-columns: 84px minmax(0, 1fr) 30px; gap: 8px; font-size: 13px; }
+  th, td { padding-inline: 10px; }
+  .form-actions { flex-direction: column; align-items: stretch; }
+  .form-actions .btn { justify-content: center; }
+}
+@media (max-width: 340px) {
+  .stats, .stats.compact { grid-template-columns: minmax(0, 1fr); }
+  .filterbar { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* secondary table columns only where there is room */
+@media (max-width: 1500px) {
+  .col-opt { display: none; }
+}
+td.wrap { white-space: normal; min-width: 130px; }
