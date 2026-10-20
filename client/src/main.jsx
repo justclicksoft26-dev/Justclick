@@ -8,7 +8,7 @@ import Report from './pages/Report.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import EmployeeDetails from './pages/EmployeeDetails.jsx';
 import Lookups from './pages/Lookups.jsx';
-import Pull from './pages/Pull.jsx';
+// import Pull from './pages/Pull.jsx'; // screen hidden, see NAV and the routes below
 import Posting from './pages/Posting.jsx';
 import Loading from './Loading.jsx';
 import Login from './pages/Login.jsx';
@@ -24,13 +24,14 @@ const NAV = [
     { to: '/holidays', label: 'العطلات الرسمية', icon: 'calendar', admin: true },
   ] },
   { group: 'الحضور والانصراف', items: [
-    { to: '/pull', label: 'سحب البصمة', icon: 'fingerprint', admin: true },
+    // hidden for now (route closed too); the screen's code stays in pages/Pull.jsx
+    // { to: '/pull', label: 'سحب البصمة', icon: 'fingerprint', admin: true },
     { to: '/posting', label: 'ترحيل المواعيد الفعلية', icon: 'clock' },
   ] },
   { group: 'التقارير', items: [
     { to: '/reports/actual', label: 'المواعيد الفعلية', icon: 'clock' },
     { to: '/reports/late', label: 'التأخيرات والغياب', icon: 'alert' },
-    { to: '/reports/late-only', label: 'التأخيرات فقط', icon: 'clock' },
+    { to: '/reports/late-only', label: 'التأخيرات اليومية', icon: 'clock' },
   ] },
 ];
 
@@ -40,18 +41,23 @@ function Shell({ user, logout }) {
     try { return localStorage.getItem('sidebar-collapsed') === '1'; } catch { return false; }
   });
   const { pathname } = useLocation();
-  useEffect(() => setOpen(false), [pathname]);
+  // report pages start with the sidebar closed; the menu button still opens it by hand
+  const onReport = pathname.startsWith('/reports');
+  const [reportOpen, setReportOpen] = useState(false);
+  useEffect(() => { setOpen(false); setReportOpen(false); }, [pathname]);
   const toggleMenu = () => {
     if (window.matchMedia('(max-width: 960px)').matches) return setOpen((o) => !o);
+    if (onReport) return setReportOpen((o) => !o);
     setCollapsed((c) => {
       try { localStorage.setItem('sidebar-collapsed', c ? '0' : '1'); } catch { /* storage unavailable */ }
       return !c;
     });
   };
+  const hidden = onReport ? !reportOpen : collapsed;
   const initial = (user.name || user.username || '?').trim().charAt(0);
 
   return (
-    <div className={`shell${collapsed ? ' collapsed' : ''}`}>
+    <div className={`shell${hidden ? ' collapsed' : ''}`}>
       <aside className={`sidebar${open ? ' open' : ''}`}>
         <div className="brand">
           <div className="brand-mark"><img src="/logo.png" alt="شركة الأفق التعليمية" /></div>
@@ -76,7 +82,7 @@ function Shell({ user, logout }) {
       <div className={`scrim${open ? ' open' : ''}`} onClick={() => setOpen(false)} />
       <div className="content">
         <div className="topbar">
-          <button className="icon-btn" onClick={toggleMenu} aria-label="فتح أو إغلاق القائمة" aria-expanded={!collapsed}><Icon name="menu" /></button>
+          <button className="icon-btn" onClick={toggleMenu} aria-label="فتح أو إغلاق القائمة" aria-expanded={!hidden}><Icon name="menu" /></button>
           <b>الحضور والانصراف</b>
         </div>
         <main className="page">
@@ -87,7 +93,7 @@ function Shell({ user, logout }) {
             {user.isAdmin && <Route path="/lookups" element={<Lookups />} />}
             {user.isAdmin && <Route path="/import" element={<ImportEmployees />} />}
             {user.isAdmin && <Route path="/holidays" element={<Holidays />} />}
-            {user.isAdmin && <Route path="/pull" element={<Pull />} />}
+            {/* {user.isAdmin && <Route path="/pull" element={<Pull />} />} */}
             <Route path="/reports" element={<Navigate to="/reports/actual" replace />} />
             <Route path="/reports/actual" element={<Report key="actual" kind="actual" />} />
             <Route path="/reports/late" element={<Report key="late" kind="late" />} />

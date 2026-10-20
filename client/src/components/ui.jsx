@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { WEEK_DAYS, norm } from '../api.js';
 
 // ---------- icons (24x24 stroke icons) ----------
@@ -16,6 +16,7 @@ const PATHS = {
   x: 'M18 6 6 18M6 6l12 12',
   check: 'M20 6 9 17l-5-5',
   alert: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0',
+  chevron: 'M6 9l6 6 6-6',
   info: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M12 16v-4M12 8h.01',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
   menu: 'M3 6h18M3 12h18M3 18h18',
@@ -216,6 +217,57 @@ export function OptionPicker({ options, value, onChange, placeholder = 'بحث �
         })}
         {!shown.length && <span className="picker-empty">لا نتائج</span>}
       </div>
+    </div>
+  );
+}
+
+/** Dropdown with a search box and checkboxes. `label` is what the closed button shows. */
+export function MultiSelect({ options, value, onChange, label, placeholder = 'بحث', disabled }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const shown = useMemo(() => {
+    const n = norm(q.trim());
+    return n ? options.filter((o) => norm(String(o.name)).includes(n)) : options;
+  }, [options, q]);
+  const toggle = (id) => onChange(value.includes(id) ? value.filter((c) => c !== id) : [...value, id]);
+  return (
+    <div className="ms" ref={ref}>
+      <button type="button" className="ms-btn" disabled={disabled} aria-expanded={open} aria-haspopup="listbox" onClick={() => setOpen((o) => !o)}>
+        <span>{label}</span><Icon name="chevron" size={14} />
+      </button>
+      {open && (
+        <div className="ms-pop">
+          <div className="search">
+            <Icon name="search" size={16} />
+            <input autoFocus placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <div className="ms-list" role="listbox" aria-multiselectable="true">
+            {shown.map((o) => {
+              const id = String(o.id);
+              return (
+                <label key={id} className={`picker-item${value.includes(id) ? ' on' : ''}`}>
+                  <input type="checkbox" checked={value.includes(id)} onChange={() => toggle(id)} />
+                  <span>{o.name}</span>
+                </label>
+              );
+            })}
+            {!shown.length && <span className="picker-empty">لا نتائج</span>}
+          </div>
+          <div className="ms-foot">
+            <span className="picker-count">{value.length ? `${value.length} محدد` : 'بدون تحديد = الكل'}</span>
+            {value.length > 0 && <button type="button" className="btn ghost sm" onClick={() => onChange([])}>مسح</button>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

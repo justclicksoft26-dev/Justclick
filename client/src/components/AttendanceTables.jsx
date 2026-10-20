@@ -21,7 +21,7 @@ export function ActualTable({ rows, emptyText }) {
           {rows.map((r) => (
             <tr key={`${r.code}-${r.date}`}>
               <td className="mono strong">{r.code}</td><td>{r.name}</td><td>{r.branch || '-'}</td><td className="mono">{r.date}</td><td>{r.dayName}</td>
-              <td dir="ltr" className="mono">{r.shift ?? '-'}</td><td className="mono">{r.checkIn ?? '-'}</td><td className="mono">{r.checkOut ?? '-'}</td>
+              <td dir="rtl" className="mono">{r.shift ? r.shift.split(' - ').map((t, i) => <span key={i}>{i > 0 && ' - '}<bdi>{t}</bdi></span>) : '-'}</td><td className="mono">{r.checkIn ?? '-'}</td><td className="mono">{r.checkOut ?? '-'}</td>
               <td className="num">{r.lateMinutes || '-'}</td>
               <td className="strong">{r.penalty}</td>
               <td><Badge tone={ATT_TONE[r.status] ?? 'info'}>{r.status}</Badge></td>

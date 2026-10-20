@@ -337,3 +337,13 @@ img, svg { max-width: 100%; }
 td.wrap { white-space: normal; min-width: 130px; }
 .count-link { display: inline-block; min-width: 28px; padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--primary); font-weight: 700; text-decoration: none; }
 .count-link:hover { background: var(--primary); color: #fff; }
+
+/* ---------- multi-select dropdown ---------- */
+.ms { position: relative; }
+.ms-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 170px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; color: var(--text); font: inherit; font-weight: 400; cursor: pointer; text-align: start; }
+.ms-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-btn:disabled { opacity: .6; cursor: not-allowed; }
+.ms-pop { position: absolute; z-index: 30; inset-inline-start: 0; top: calc(100% + 4px); width: 280px; max-width: 86vw; background: #fff; border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.14); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ms-list { max-height: 220px; overflow-y: auto; display: grid; gap: 2px; }
+.ms-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+@media (max-width: 640px) { .ms-btn { width: 100%; } .filterbar .fb-field:has(.ms) { grid-column: 1 / -1; } }

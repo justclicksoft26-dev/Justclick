@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { api, clampToday, norm, today } from '../api.js';
 import Loading from '../Loading.jsx';
 import { ActualTable, LATE_BANDS, LateTable, inBand } from '../components/AttendanceTables.jsx';
-import { Alert, Icon, OptionPicker, PageHeader, Spinner, Stat } from '../components/ui.jsx';
+import { Alert, Icon, MultiSelect, OptionPicker, PageHeader, Spinner, Stat } from '../components/ui.jsx';
 
 const REPORTS = {
   actual: {
@@ -14,11 +14,11 @@ const REPORTS = {
     columns: [['code', 'الكود'], ['name', 'الاسم'], ['branch', 'الفرع'], ['date', 'التاريخ'], ['dayName', 'اليوم'], ['shift', 'الدوام'], ['checkIn', 'الحضور'], ['checkOut', 'الانصراف'], ['lateMinutes', 'التأخير (د)'], ['penalty', 'الجزاء المستحق'], ['status', 'الحالة']],
   },
   lateOnly: {
-    title: 'تقرير التأخيرات فقط',
+    title: 'التأخيرات اليومية',
     subtitle: 'الموظفون المتأخرون عن موعد الدوام في الفترة المحددة',
     endpoint: 'actual',
     file: 'late-only',
-    pick: (r) => r.status === 'تأخير',
+    pick: (r) => r.status === 'تأخير' && r.lateMinutes > 0,
     columns: [['code', 'الكود'], ['name', 'الاسم'], ['branch', 'الفرع'], ['date', 'التاريخ'], ['dayName', 'اليوم'], ['shift', 'الدوام'], ['checkIn', 'الحضور'], ['lateMinutes', 'التأخير (د)'], ['penalty', 'الجزاء المستحق']],
   },
   late: {
@@ -30,10 +30,19 @@ const REPORTS = {
   },
 };
 
+const RLM = '‏';
+// start time on the right, end time on the left (right-to-left reading order)
+const shiftText = (s) => (s ? `${RLM}${s}${RLM}` : '-');
+const jobCountLabel = (ids, list) => {
+  if (!ids.length) return 'كل الوظائف';
+  if (ids.length === 1) return list.find((j) => String(j.id) === ids[0])?.name ?? '1 وظيفة';
+  return `${ids.length} ${ids.length <= 10 ? 'وظائف' : 'وظيفة'}`;
+};
+
 function downloadCsv(cfg, rows, from, to) {
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [cfg.columns.map(([, h]) => esc(h)).join(',')];
-  for (const r of rows) lines.push(cfg.columns.map(([k]) => esc(r[k])).join(','));
+  for (const r of rows) lines.push(cfg.columns.map(([k]) => esc(k === 'shift' ? shiftText(r[k]) : r[k])).join(','));
   const blob = new Blob([`﻿${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -57,20 +66,23 @@ export default function Report({ kind }) {
   const [range, setRange] = useState(null);
   const [branches, setBranches] = useState([]);
   const [branch, setBranch] = useState('');
+  const [jobList, setJobList] = useState([]);
+  const [jobs, setJobs] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [band, setBand] = useState('');
   // the filters of the last run: the late-report links carry these, not whatever is half-typed in the form
-  const [applied, setApplied] = useState({ from: '', to: '', branch: '' });
+  const [applied, setApplied] = useState({ from: '', to: '', branch: '', jobs: [] });
 
-  async function run(f = from, t = to, e = emps, b = branch, bd = band) {
+  async function run(f = from, t = to, e = emps, b = branch, bd = band, j = jobs) {
     setErr('');
     setBusy(true);
     try {
       const p = new URLSearchParams({ from: f, to: t });
       if (e.length) p.set('emps', e.join(','));
       if (b) p.set('branches', b);
+      if (j.length) p.set('jobs', j.join(','));
       const rows = await api(`/api/posting/${cfg.endpoint}?${p}`);
-      setApplied({ from: f, to: t, branch: b });
+      setApplied({ from: f, to: t, branch: b, jobs: j });
       setData(cfg.pick ? rows.filter((r) => cfg.pick(r) && inBand(r.lateMinutes, bd)) : rows);
     } catch (x) {
       setErr(x.message);
@@ -93,6 +105,7 @@ export default function Report({ kind }) {
         setEmployees(list);
         const bl = s.branches ?? [];
         setBranches(bl);
+        setJobList(s.jobs ?? []);
         setIsAdmin(!!s.isAdmin);
         // admin: all branches (changeable); branch user: their own branch is the only choice
         const def = bl.length === 1 && !s.isAdmin ? String(bl[0].id) : sp.get('branch') || '';
@@ -102,9 +115,11 @@ export default function Report({ kind }) {
         setTo(r.to);
         setEmps(pickedEmps);
         setShowEmps(false);
+        const pickedJobs = (sp.get('jobs') || '').split(',').filter(Boolean);
         setBranch(def);
+        setJobs(pickedJobs);
         setBand(bd);
-        return run(r.from, r.to, pickedEmps, def, bd);
+        return run(r.from, r.to, pickedEmps, def, bd, pickedJobs);
       })
       .catch((x) => { setErr(x.message); setBusy(false); });
   }, [kind, search]);
@@ -170,11 +185,15 @@ export default function Report({ kind }) {
             </select>
           </label>
         )}
+        <div className="fb-field">
+          <span>الوظيفة</span>
+          <MultiSelect options={jobList} value={jobs} onChange={setJobs} label={jobCountLabel(jobs, jobList)} placeholder="بحث في الوظائف" />
+        </div>
         <button type="button" className={`btn ghost${showEmps ? ' pressed' : ''}`} onClick={() => setShowEmps((v) => !v)} aria-expanded={showEmps}>
           <Icon name="users" size={16} />{emps.length ? `${emps.length} موظف محدد` : 'كل الموظفين'}
         </button>
         {band && (
-          <button type="button" className="btn ghost pressed" onClick={() => { setBand(''); run(from, to, emps, branch, ''); }} title="إلغاء تصفية الفئة">
+          <button type="button" className="btn ghost pressed" onClick={() => { setBand(''); run(from, to, emps, branch, '', jobs); }} title="إلغاء تصفية الفئة">
             {LATE_BANDS.find((x) => x.key === band)?.label} ✕
           </button>
         )}
@@ -217,7 +236,7 @@ export default function Report({ kind }) {
         {!busy && data && kind === 'late' && (
           <LateTable
             rows={shown}
-            link={(r, b) => `/reports/late-only?${new URLSearchParams({ from: applied.from, to: applied.to, emps: r.code, band: b, ...(applied.branch ? { branch: applied.branch } : {}) })}`}
+            link={(r, b) => `/reports/late-only?${new URLSearchParams({ from: applied.from, to: applied.to, emps: r.code, band: b, ...(applied.branch ? { branch: applied.branch } : {}), ...(applied.jobs.length ? { jobs: applied.jobs.join(',') } : {}) })}`}
           />
         )}
       </section>
