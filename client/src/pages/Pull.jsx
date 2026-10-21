@@ -35,7 +35,7 @@ export default function Pull() {
   const upload = (e) => {
     e.preventDefault();
     const file = fileRef.current.files[0];
-    if (!file) return setMsg({ ok: false, text: 'اختار ملف CSV أولا' });
+    if (!file) return setMsg({ ok: false, text: 'اختر ملف CSV أولًا' });
     const form = new FormData();
     form.append('file', file);
     run('upload', () => api('/api/punches/upload', { method: 'POST', form }));

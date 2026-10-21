@@ -85,7 +85,7 @@ function Shell({ user, logout }) {
           <button className="icon-btn" onClick={toggleMenu} aria-label="فتح أو إغلاق القائمة" aria-expanded={!hidden}><Icon name="menu" /></button>
           <b>الحضور والانصراف</b>
         </div>
-        <main className="page">
+        <main className={`page${onReport ? ' wide' : ''}`}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/employees" element={<Employees />} />

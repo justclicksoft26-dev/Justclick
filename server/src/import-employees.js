@@ -67,7 +67,7 @@ export async function templateBuffer() {
   ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00294F' } };
   ws.addRow({
-    code: '101', name: 'محمد أحمد', nationalId: '29801010101010', job: 'محاسب', hireDate: '2025-01-01', status: 'نشط',
+    code: '101', name: 'محمد أحمد', nationalId: '1098010101', job: 'محاسب', hireDate: '2025-01-01', status: 'نشط',
     shiftStart: '06:00', shiftEnd: '13:30', weeklyOff: 'الجمعة، السبت', graceMin: 14,
   });
   return wb.xlsx.writeBuffer();

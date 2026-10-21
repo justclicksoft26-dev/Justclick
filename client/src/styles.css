@@ -347,3 +347,13 @@ td.wrap { white-space: normal; min-width: 130px; }
 .ms-list { max-height: 220px; overflow-y: auto; display: grid; gap: 2px; }
 .ms-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 @media (max-width: 640px) { .ms-btn { width: 100%; } .filterbar .fb-field:has(.ms) { grid-column: 1 / -1; } }
+
+/* ---------- report pages: use the full width so the table needs no horizontal scroll ---------- */
+.page.wide { max-width: none; padding-inline: 20px; }
+.page.wide th { padding: 10px 8px; }
+.page.wide td { padding: 10px 8px; }
+.page.wide td:nth-child(2) { white-space: normal; min-width: 130px; }
+@media (max-width: 1500px) {
+  .page.wide table { font-size: 13px; }
+  .page.wide th { font-size: 12px; white-space: normal; line-height: 1.35; }
+}

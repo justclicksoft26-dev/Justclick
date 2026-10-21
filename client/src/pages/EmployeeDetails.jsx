@@ -79,7 +79,7 @@ export default function EmployeeDetails() {
           <Field label="كود الموظف" hint="لا يمكن تغيير الكود"><input value={orig.code} readOnly dir="ltr" /></Field>
           <Field label="الاسم (عربي)" error={errors.name}><input value={form.name} onChange={set('name')} /></Field>
           {filled(form.nameEn) && <Field label="الاسم (إنجليزي)" error={errors.nameEn}><input value={form.nameEn} onChange={set('nameEn')} dir="ltr" /></Field>}
-          <Field label="رقم الهوية" error={errors.nationalId}><input value={form.nationalId} onChange={set('nationalId')} maxLength={14} inputMode="numeric" dir="ltr" /></Field>
+          <Field label="رقم الهوية" error={errors.nationalId}><input value={form.nationalId} onChange={set('nationalId')} maxLength={10} inputMode="numeric" dir="ltr" /></Field>
           <Field label="الفرع" error={errors.branchId}><LookupSelect options={opts.branches} value={form.branchId} onChange={setVal('branchId')} /></Field>
           <Field label="الإدارة" error={errors.deptId}><LookupSelect options={opts.depts} value={form.deptId} onChange={setVal('deptId')} /></Field>
           <Field label="الوظيفة" error={errors.job ?? errors.jobId}><LookupSelect required options={opts.jobs} value={form.jobId} onChange={setVal('jobId')} /></Field>

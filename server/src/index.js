@@ -58,7 +58,7 @@ const badRange = (f, t) => !isValidDate(f) || !isValidDate(t) || f > t;
 app.post('/api/auth/login', wrap(async (req, res) => {
   const username = String(req.body.username ?? '').trim();
   const password = String(req.body.password ?? '');
-  if (!username || !password) return res.status(400).json({ message: 'اكتب اسم المستخدم وكلمة المرور' });
+  if (!username || !password) return res.status(400).json({ message: 'أدخل اسم المستخدم وكلمة المرور' });
   const result = await login(username, password);
   if (!result) return res.status(401).json({ message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
   res.json(result);
@@ -99,7 +99,7 @@ app.get('/api/employees/template', requireAdmin, wrap(async (_req, res) => {
 }));
 
 app.post('/api/employees/import', requireAdmin, upload.single('file'), wrap(async (req, res) => {
-  if (!req.file) return res.status(400).json({ message: 'اختار ملف Excel أولا' });
+  if (!req.file) return res.status(400).json({ message: 'اختر ملف Excel أولًا' });
   const r = await importEmployees(req.file.buffer);
   if (r.error) return res.status(400).json({ message: r.error });
   res.json(r);
@@ -253,7 +253,7 @@ app.post('/api/punches/pull', requireAdmin, wrap(async (req, res) => {
 }));
 
 app.post('/api/punches/upload', requireAdmin, upload.single('file'), wrap(async (req, res) => {
-  if (!req.file) return res.status(400).json({ message: 'اختار ملف CSV أولا' });
+  if (!req.file) return res.status(400).json({ message: 'اختر ملف CSV أولًا' });
   const parsed = parsePunchCsv(req.file.buffer.toString('utf8'));
   if (parsed.error) return res.status(400).json({ message: `تم رفض الملف: ${parsed.error}` });
   res.json(summary(await storePunches(parsed.rows)));
@@ -271,7 +271,7 @@ const filtersFrom = (src) => ({
   from: src.from, to: src.to, depts: listOf(src.depts), jobs: listOf(src.jobs), emps: listOf(src.emps), branches: listOf(src.branches),
 });
 const checkRange = ({ from, to }) => {
-  if (!isValidDate(from) || !isValidDate(to) || from > to) return 'اختار فترة صحيحة';
+  if (!isValidDate(from) || !isValidDate(to) || from > to) return 'اختر فترة صحيحة';
   if (to > latestDate()) return 'لا يمكن اختيار تاريخ في المستقبل';
   return null;
 };

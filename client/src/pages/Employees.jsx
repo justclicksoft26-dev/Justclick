@@ -61,7 +61,7 @@ function EmployeeForm({ onClose, onSaved }) {
             <div className="code-row">
               {autoCode
                 ? <input readOnly value={nextCode} placeholder="..." dir="ltr" />
-                : <input value={form.code} onChange={set('code')} placeholder="اكتب الكود" inputMode="numeric" dir="ltr" autoFocus />}
+                : <input value={form.code} onChange={set('code')} placeholder="أدخل الكود" inputMode="numeric" dir="ltr" autoFocus />}
               <span className="seg">
                 <button type="button" className={autoCode ? 'on' : ''} onClick={() => setAutoCode(true)}>تلقائي</button>
                 <button type="button" className={!autoCode ? 'on' : ''} onClick={() => setAutoCode(false)}>يدوي</button>
@@ -72,7 +72,7 @@ function EmployeeForm({ onClose, onSaved }) {
             <input value={form.name} onChange={set('name')} placeholder="الاسم بالعربية" autoFocus={autoCode} />
           </Field>
           <Field label="رقم الهوية" error={errors.nationalId}>
-            <input value={form.nationalId} onChange={set('nationalId')} placeholder="14 رقم" inputMode="numeric" maxLength={14} dir="ltr" />
+            <input value={form.nationalId} onChange={set('nationalId')} placeholder="10 أرقام" inputMode="numeric" maxLength={10} dir="ltr" />
           </Field>
           <Field label="الوظيفة" error={errors.job} hint={opts.jobs.length ? undefined : 'لا توجد وظائف مسجلة'}>
             <select value={form.jobId} onChange={set('jobId')}>

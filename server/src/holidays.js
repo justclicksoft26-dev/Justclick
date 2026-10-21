@@ -57,9 +57,9 @@ export function validateHoliday(body) {
   if (nameEn.length > 100) errors.nameEn = 'الاسم طويل جدا';
   if (!isValidDate(from)) errors.from = 'تاريخ بداية العطلة غير صحيح';
   if (!isValidDate(to)) errors.to = 'تاريخ نهاية العطلة غير صحيح';
-  else if (isValidDate(from) && to < from) errors.to = 'النهاية لازم تكون بعد البداية';
+  else if (isValidDate(from) && to < from) errors.to = 'يجب أن تكون النهاية بعد البداية';
   else if (isValidDate(from) && daysBetween(from, to) > MAX_DAYS) errors.to = `الحد الأقصى ${MAX_DAYS} يوم`;
-  if (scope === 'selected' && !emps.length) errors.emps = 'اختار موظف واحد على الأقل أو طبّق العطلة على الكل';
+  if (scope === 'selected' && !emps.length) errors.emps = 'اختر موظفًا واحدًا على الأقل أو طبّق العطلة على الكل';
 
   return { errors, values: { nameAr, nameEn: nameEn || nameAr, from, to, scope, emps } };
 }

@@ -9,9 +9,9 @@ import { localToday } from './validation.js';
 const TAG = 999;
 const DAYS = 30;
 const EMPLOYEES = [
-  { code: '9001', name: 'أحمد علي', nationalId: '29001011234567', job: 'محاسب', weeklyOff: [5] },
-  { code: '9002', name: 'منى حسن', nationalId: '29205051234567', job: 'سكرتيرة', weeklyOff: [5, 6] },
-  { code: '9003', name: 'محمود سعيد', nationalId: '28803031234567', job: 'مهندس موقع', weeklyOff: [5] },
+  { code: '9001', name: 'أحمد علي', nationalId: '1090010112', job: 'محاسب', weeklyOff: [5] },
+  { code: '9002', name: 'منى حسن', nationalId: '1092050512', job: 'سكرتيرة', weeklyOff: [5, 6] },
+  { code: '9003', name: 'محمود سعيد', nationalId: '1088030312', job: 'مهندس موقع', weeklyOff: [5] },
 ];
 
 const pad = (n) => String(n).padStart(2, '0');

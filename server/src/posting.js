@@ -85,6 +85,7 @@ export async function postActualTimes(filters) {
           { e: e.id, f: start, t: end, x: hr.X },
         );
         await clearFreeLate(exec, e.id, start, end);
+        await dropPendingAbsence(exec, e.id, start, end);
         posted.push(e.id);
       } catch (err) {
         await exec('ROLLBACK TO emp_sp');
@@ -108,6 +109,22 @@ export async function clearFreeLate(exec, empId, from, to) {
         AND ${minOfDay('IN_TIME')} - ${minOfDay('SHIFT_DATE_FROM')} <= :free
         ${empId == null ? '' : "AND EMP_ID = :e AND FROM_IO_DATE BETWEEN TO_DATE(:f,'YYYY-MM-DD') AND TO_DATE(:t,'YYYY-MM-DD')"}`,
     empId == null ? { free: FREE_LATE_MIN } : { free: FREE_LATE_MIN, e: empId, f: from, t: to },
+  );
+  return r.rowsAffected;
+}
+
+/**
+ * POST_IO_EMP_PRC writes an absence row (IN_FLAG 5) for every day of the range before it looks at the punches.
+ * A day that has not happened yet must not stay as absence, so those empty rows are removed
+ * (the next posting rebuilds them). Today's rows are kept.
+ */
+export async function dropPendingAbsence(exec, empId, from, to) {
+  const r = await exec(
+    `DELETE FROM EMP_IO_TIMES
+      WHERE EMP_ID = :e AND FROM_IO_DATE BETWEEN TO_DATE(:f,'YYYY-MM-DD') AND TO_DATE(:t,'YYYY-MM-DD')
+        AND IN_FLAG = 5 AND IN_TIME IS NULL AND OUT_TIME IS NULL
+        AND FROM_IO_DATE > TRUNC(SYSDATE)`,
+    { e: empId, f: from, t: to },
   );
   return r.rowsAffected;
 }

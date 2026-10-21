@@ -49,9 +49,9 @@ export function validateEmployee(body, today = localToday(), { autoCode = false 
   const weeklyOff = Array.isArray(body.weeklyOff) ? body.weeklyOff.map(Number) : [];
   const graceRaw = body.graceMin;
 
-  if (!(autoCode && code === '') && !/^\d{1,9}$/.test(code)) errors.code = 'كود الموظف لازم يكون أرقام (نفس كود جهاز البصمة)';
+  if (!(autoCode && code === '') && !/^\d{1,9}$/.test(code)) errors.code = 'يجب أن يكون كود الموظف أرقامًا (نفس كود جهاز البصمة)';
   if (!name || !/[؀-ۿ]/.test(name)) errors.name = 'يجب ادخال الاسم العربي';
-  if (!/^\d{14}$/.test(nid)) errors.nationalId = 'رقم الهوية لازم يكون 14 رقم';
+  if (!/^\d{10}$/.test(nid)) errors.nationalId = 'يجب أن يتكون رقم الهوية من 10 أرقام';
   const jobId = optId(body.jobId);
   const deptId = optId(body.deptId);
   const branchId = optId(body.branchId);
@@ -59,10 +59,10 @@ export function validateEmployee(body, today = localToday(), { autoCode = false 
   if (!isValidDate(hireDate) || hireDate > today) errors.hireDate = 'تاريخ التعيين لا يكون في المستقبل';
   if (!SAVEABLE_STATUSES.includes(status)) errors.status = 'الحالة غير صحيحة';
   if (!TIME_RE.test(start) || !TIME_RE.test(end) || toMinutes(end) <= toMinutes(start)) {
-    errors.shift = 'نهاية الدوام لازم تكون بعد البداية';
+    errors.shift = 'يجب أن تكون نهاية الدوام بعد بدايته';
   }
   if (!weeklyOff.length || weeklyOff.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
-    errors.weeklyOff = 'اختار يوم إجازة واحد على الأقل';
+    errors.weeklyOff = 'اختر يوم إجازة واحدًا على الأقل';
   }
   const grace = graceRaw === '' || graceRaw == null ? NaN : Number(graceRaw);
   if (!Number.isInteger(grace) || grace < 0 || grace > 60) errors.graceMin = 'السماحية من 0 إلى 60 دقيقة';
@@ -80,7 +80,7 @@ export function parsePunchCsv(text) {
   if (!lines.length) return { error: 'الملف فارغ' };
   const header = lines[0].split(',').map((c) => c.trim().toLowerCase());
   if (header.length !== 2 || header[0] !== 'code' || header[1] !== 'timestamp') {
-    return { error: 'الأعمدة لازم تكون: code,timestamp' };
+    return { error: 'يجب أن تكون الأعمدة: code,timestamp' };
   }
   const rows = [];
   for (let i = 1; i < lines.length; i++) {

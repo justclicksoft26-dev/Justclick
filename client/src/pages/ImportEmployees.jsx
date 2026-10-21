@@ -13,7 +13,7 @@ export default function ImportEmployees() {
   const pick = (f) => {
     setErr('');
     setResult(null);
-    if (f && !/\.xlsx$/i.test(f.name)) return setErr('الملف لازم يكون بصيغة xlsx');
+    if (f && !/\.xlsx$/i.test(f.name)) return setErr('يجب أن يكون الملف بصيغة xlsx');
     setFile(f ?? null);
   };
 
