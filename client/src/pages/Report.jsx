@@ -162,10 +162,20 @@ export default function Report({ kind }) {
   return (
     <>
       <PageHeader title={cfg.title} subtitle={cfg.subtitle}>
+        <button className="btn ghost" type="button" disabled={!shown.length} onClick={() => window.print()}>
+          <Icon name="print" size={16} />طباعة
+        </button>
         <button className="btn ghost" type="button" disabled={!shown.length} onClick={() => downloadCsv(cfg, shown, from, to)}>
           <Icon name="download" size={16} />تصدير Excel / CSV
         </button>
       </PageHeader>
+
+      <div className="print-only print-meta">
+        <strong>{cfg.title}</strong>
+        <span>من {applied.from} إلى {applied.to}</span>
+        {applied.branch && <span>الفرع: {branches.find((b) => String(b.id) === String(applied.branch))?.name}</span>}
+        {applied.jobs.length > 0 && <span>الوظيفة: {jobCountLabel(applied.jobs, jobList)}</span>}
+      </div>
 
       <form className="filterbar" onSubmit={submit}>
         <label className="fb-field">
