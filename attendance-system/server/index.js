@@ -1,5 +1,8 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
@@ -135,6 +138,13 @@ app.post('/api/attendance', auth, async (req, res) => {
   }
   res.json({ ok: true, slot: cur.id, status, date });
 });
+
+// Production: serve the built React app (client/dist) from the same server/port
+const distDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../client/dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(distDir, 'index.html')));
+}
 
 app.use((err, _req, res, _next) => {
   console.error(err);
