@@ -1,0 +1,37 @@
+import dns from 'node:dns';
+import mongoose from 'mongoose';
+
+// Some local DNS resolvers refuse SRV lookups (needed by mongodb+srv://); use public DNS for them.
+dns.setServers(['8.8.8.8', '1.1.1.1']);
+
+export async function connectDb() {
+  // The URI may contain <db_username>/<db_password> placeholders, filled from DB_USER / DB_PASS
+  const uri = (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/attendance')
+    .replace('<db_username>', encodeURIComponent(process.env.DB_USER || ''))
+    .replace('<db_password>', encodeURIComponent(process.env.DB_PASS || ''));
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 8000 });
+  await Attendance.syncIndexes();
+  console.log('MongoDB connected');
+}
+
+const otpSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
+  codeHash: { type: String, required: true },
+  expiresAt: { type: Date, required: true, index: { expireAfterSeconds: 600 } }, // auto-clean
+  attempts: { type: Number, default: 0 },
+  lastSentAt: { type: Date, required: true },
+});
+
+const attendanceSchema = new mongoose.Schema({
+  email: { type: String, required: true },
+  date: { type: String, required: true }, // YYYY-MM-DD (local time)
+  slot: { type: String, required: true, enum: ['08-10', '10-12', '12-14', '14-16'] },
+  status: { type: String, required: true, enum: ['present', 'absent'] },
+  recordedAt: { type: Date, required: true },
+  ip: String,
+  userAgent: String,
+});
+attendanceSchema.index({ email: 1, date: 1, slot: 1 }, { unique: true });
+
+export const Otp = mongoose.model('Otp', otpSchema);
+export const Attendance = mongoose.model('Attendance', attendanceSchema);
