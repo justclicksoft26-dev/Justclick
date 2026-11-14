@@ -1,11 +1,15 @@
 export const TIMEZONE = process.env.TIMEZONE || 'Asia/Riyadh';
 
-export const SLOTS = [
-  { id: '08-10', label: '8:00 - 10:00', start: 8, end: 10 },
-  { id: '10-12', label: '10:00 - 12:00', start: 10, end: 12 },
-  { id: '12-14', label: '12:00 - 2:00', start: 12, end: 14 },
-  { id: '14-16', label: '2:00 - 4:00', start: 14, end: 16 },
-];
+const m = (h, min = 0) => h * 60 + min;
+
+// Times are local (TIMEZONE), as [start, end) in minutes since midnight.
+// Working window: 07:30 - 14:00. Outside it both buttons are closed.
+// Check-in  : open 07:30 - 13:00
+// Check-out : open 13:45 - 14:00 (closed 07:30 - 13:00 and 13:00 - 13:45)
+export const DAY_START = m(7, 30);
+export const DAY_END = m(14);
+export const CHECK_IN_CLOSED = [[m(0), m(7, 30)], [m(13), m(24)]];
+export const CHECK_OUT_CLOSED = [[m(0), m(13, 45)], [m(14), m(24)]];
 
 export function now() {
   return process.env.FAKE_NOW ? new Date(process.env.FAKE_NOW) : new Date();
@@ -18,10 +22,21 @@ export function localParts(d = now()) {
   });
   const p = Object.fromEntries(f.formatToParts(d).map((x) => [x.type, x.value]));
   const hour = Number(p.hour) % 24;
-  return { date: `${p.year}-${p.month}-${p.day}`, hour, minute: Number(p.minute) };
+  const minute = Number(p.minute);
+  return {
+    date: `${p.year}-${p.month}-${p.day}`,
+    hour,
+    minute,
+    minutes: hour * 60 + minute,
+    time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+  };
 }
 
-export function currentSlot() {
-  const { hour } = localParts();
-  return SLOTS.find((s) => hour >= s.start && hour < s.end) || null;
+const inRanges = (min, ranges) => ranges.some(([a, b]) => min >= a && min < b);
+
+export function windows(minutes = localParts().minutes) {
+  return {
+    checkIn: !inRanges(minutes, CHECK_IN_CLOSED),
+    checkOut: !inRanges(minutes, CHECK_OUT_CLOSED),
+  };
 }

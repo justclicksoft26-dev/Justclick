@@ -25,13 +25,13 @@ const otpSchema = new mongoose.Schema({
 const attendanceSchema = new mongoose.Schema({
   email: { type: String, required: true },
   date: { type: String, required: true }, // YYYY-MM-DD (local time)
-  slot: { type: String, required: true, enum: ['08-10', '10-12', '12-14', '14-16'] },
-  status: { type: String, required: true, enum: ['present', 'absent'] },
+  type: { type: String, required: true, enum: ['check_in', 'check_out'] },
   recordedAt: { type: Date, required: true },
   ip: String,
   userAgent: String,
 });
-attendanceSchema.index({ email: 1, date: 1, slot: 1 }, { unique: true });
+// one check-in and one check-out per employee per day
+attendanceSchema.index({ email: 1, date: 1, type: 1 }, { unique: true });
 
 export const Otp = mongoose.model('Otp', otpSchema);
-export const Attendance = mongoose.model('Attendance', attendanceSchema);
+export const Attendance = mongoose.model('Attendance', attendanceSchema, 'attendance_logs');

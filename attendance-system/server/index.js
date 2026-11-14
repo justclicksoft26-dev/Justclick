@@ -7,7 +7,7 @@ import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import { connectDb, Otp, Attendance } from './db.js';
-import { SLOTS, currentSlot, localParts, now } from './slots.js';
+import { windows, localParts, now } from './slots.js';
 import { sendOtp } from './mailer.js';
 
 const PORT = Number(process.env.PORT || 4000);
@@ -92,51 +92,70 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   res.json({ token, email });
 });
 
-// 3) slot info + today's records
-app.get('/api/attendance/status', auth, async (req, res) => {
-  const { date, hour, minute } = localParts();
-  const cur = currentSlot();
-  const records = (await Attendance.find({ email: req.user.email, date }).lean()).map((r) => ({
-    slot: r.slot,
-    status: r.status,
-    recorded_at: r.recordedAt,
-  }));
-  res.json({
-    email: req.user.email,
+// Work out what the employee can do right now (server clock decides, never the client)
+async function buildState(email) {
+  const { date, time, minutes } = localParts();
+  const logs = await Attendance.find({ email, date }).lean();
+  const inLog = logs.find((l) => l.type === 'check_in');
+  const outLog = logs.find((l) => l.type === 'check_out');
+  const w = windows(minutes);
+
+  let inNote = '';
+  if (inLog) inNote = 'Check-in recorded for today.';
+  else if (!w.checkIn) {
+    inNote =
+      minutes < 7 * 60 + 30 ? 'Check-in opens at 7:30 AM.'
+      : minutes >= 14 * 60 ? 'Attendance is closed for today (7:30 AM - 2:00 PM).'
+      : 'Check-in is closed after 1:00 PM.';
+  }
+
+  let outNote = '';
+  if (outLog) outNote = 'Check-out recorded for today.';
+  else if (minutes >= 14 * 60) outNote = 'Check-out is closed for today.';
+  else if (!inLog) outNote = 'Check in first.';
+  else if (!w.checkOut) outNote = 'Check-out opens at 1:45 PM.';
+
+  return {
+    email,
     date,
-    time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
-    currentSlot: cur ? cur.id : null,
-    slots: SLOTS.map((s) => ({ id: s.id, label: s.label })),
-    records,
-  });
+    time,
+    checkIn: { enabled: w.checkIn && !inLog, done: !!inLog, at: inLog ? localParts(inLog.recordedAt).time : null, note: inNote },
+    checkOut: { enabled: w.checkOut && !!inLog && !outLog, done: !!outLog, at: outLog ? localParts(outLog.recordedAt).time : null, note: outNote },
+  };
+}
+
+// 3) today's state
+app.get('/api/attendance/status', auth, async (req, res) => {
+  res.json(await buildState(req.user.email));
 });
 
-// 4) record attendance
+// 4) record check-in / check-out
 app.post('/api/attendance', auth, async (req, res) => {
-  const { status } = req.body;
-  if (!['present', 'absent'].includes(status)) {
-    return res.status(400).json({ error: 'Invalid status.' });
+  const { type } = req.body;
+  if (!['check_in', 'check_out'].includes(type)) {
+    return res.status(400).json({ error: 'Invalid action.' });
   }
-  const cur = currentSlot(); // slot is decided by the server clock, not the client
-  if (!cur) return res.status(400).json({ error: 'Attendance is closed at this time.' });
-  const { date } = localParts();
+  const state = await buildState(req.user.email);
+  const s = type === 'check_in' ? state.checkIn : state.checkOut;
+  if (!s.enabled) {
+    return res.status(s.done ? 409 : 400).json({ error: s.note || 'Not available right now.' });
+  }
   try {
     await Attendance.create({
       email: req.user.email,
-      date,
-      slot: cur.id,
-      status,
+      date: state.date,
+      type,
       recordedAt: now(),
       ip: req.ip,
       userAgent: req.headers['user-agent'] || '',
     });
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(409).json({ error: 'Attendance already recorded for this period.' });
+      return res.status(409).json({ error: 'Already recorded for today.' });
     }
     throw err;
   }
-  res.json({ ok: true, slot: cur.id, status, date });
+  res.json(await buildState(req.user.email));
 });
 
 // Production: serve the built React app (client/dist) from the same server/port
