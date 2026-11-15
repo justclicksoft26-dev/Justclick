@@ -6,6 +6,8 @@ import ZKLib from 'node-zklib';
 import { validateEmployee, validateEmployeeUpdate, parsePunchCsv, validatePunches, isValidDate, latestDate, localToday } from './validation.js';
 import { getActualTimes, getDefaults, getLookups, getPostedRange, postActualTimes, summarizeLateAbsent } from './posting.js';
 import { getDashboard } from './dashboard.js';
+import { getWebAttendance } from './web-attendance.js';
+import checkinRouter from './checkin/routes.js';
 import { LOOKUP_TYPES, allOptions, createValue, deleteValue, Duplicate, listTypes, listValues, typeById, updateValue, validateLookup } from './lookups.js';
 import { importEmployees, templateBuffer } from './import-employees.js';
 import { currentUser, login, requireAdmin, requireAuth } from './auth.js';
@@ -45,6 +47,9 @@ app.post('/api/agent/punches', express.json({ limit: '2mb' }), async (req, res, 
 });
 
 app.use(express.json());
+// staff web check-in at /attendance (client) -> /api/attendance (here): own OTP login, so it sits before requireAuth
+app.set('trust proxy', 1);
+app.use('/api/attendance', checkinRouter);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const wrap = (fn) => (req, res, next) => fn(req, res).catch(next);
 
@@ -308,6 +313,20 @@ app.get('/api/posting/late-absent', wrap(async (req, res) => {
   const today = localToday();
   const active = new Set((await loadEmployees({ from: today, to: today, today, branch: req.branch })).filter((e) => e.status === 'ACTIVE').map((e) => e.code));
   res.json(summarizeLateAbsent(await getActualTimes(f), active));
+}));
+
+// Web check-in report (MongoDB, see web-attendance.js): admin only because those employees have no branch
+app.get('/api/web-attendance/report', requireAdmin, wrap(async (req, res) => {
+  const from = String(req.query.from ?? '');
+  const to = String(req.query.to ?? '');
+  if (badRange(from, to)) return res.status(400).json({ message: 'تاريخ غير صحيح' });
+  const emails = String(req.query.emails ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  try {
+    res.json(await getWebAttendance(from, to, emails));
+  } catch (e) {
+    console.error('web-attendance:', e.message);
+    res.status(502).json({ message: 'تعذر قراءة سجلات الحضور (MongoDB): ' + e.message });
+  }
 }));
 
 app.use((err, _req, res, _next) => {

@@ -33,5 +33,16 @@ const attendanceSchema = new mongoose.Schema({
 // one check-in and one check-out per employee per day
 attendanceSchema.index({ email: 1, date: 1, type: 1 }, { unique: true });
 
+// An employee is registered automatically the first time he checks in. The report uses this list to
+// find who missed a day (no check-in and no check-out = absent).
+const employeeSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
+  name: { type: String, default: '' },
+  registeredAt: { type: Date, required: true },
+  firstDate: { type: String, required: true }, // YYYY-MM-DD of the first check-in; absence counts from here on
+  active: { type: Boolean, default: true },
+});
+
 export const Otp = mongoose.model('Otp', otpSchema);
+export const Employee = mongoose.model('Employee', employeeSchema, 'employees');
 export const Attendance = mongoose.model('Attendance', attendanceSchema, 'attendance_logs');

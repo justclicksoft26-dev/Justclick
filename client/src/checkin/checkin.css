@@ -1,0 +1,25 @@
+/* Staff check-in page (/attendance). Everything is under .ck-shell so it cannot clash with the ERP styles. */
+.ck-shell { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: #f1f5f9; color: #0f172a; direction: ltr; text-align: left; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+.ck-shell * { box-sizing: border-box; }
+.ck-card { width: 100%; max-width: 440px; background: #fff; border-radius: 16px; padding: 28px; box-shadow: 0 10px 30px rgba(15, 23, 42, .08); }
+.ck-card h1 { margin: 0 0 4px; font-size: 1.5rem; line-height: 1.3; }
+.ck-muted { color: #64748b; margin: 0 0 20px; font-size: .9rem; }
+.ck-card label { display: block; font-weight: 600; margin: 12px 0 6px; font-size: .9rem; }
+.ck-card input { width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 1rem; background: #fff; color: #0f172a; box-shadow: none; }
+.ck-card input.ck-otp { text-align: center; letter-spacing: 8px; font-size: 1.4rem; }
+.ck-card input:focus { outline: 2px solid #2563eb; border-color: transparent; box-shadow: none; }
+.ck-btn { display: block; width: 100%; margin-top: 16px; padding: 13px; border: 0; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; color: #fff; font-family: inherit; }
+.ck-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ck-btn.primary { background: #2563eb; }
+.ck-btn.in { background: #16a34a; }
+.ck-btn.out { background: #2563eb; }
+.ck-actions { display: flex; flex-direction: column; gap: 4px; }
+.ck-actions .ck-btn { margin-top: 12px; padding: 16px; font-size: 1.1rem; }
+.ck-hint { margin: 6px 2px 0; font-size: .8rem; color: #64748b; }
+.ck-link { background: none; border: 0; color: #2563eb; cursor: pointer; font-size: .85rem; padding: 0; font-family: inherit; }
+.ck-row { display: flex; justify-content: space-between; margin-top: 14px; }
+.ck-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.ck-alert { margin-top: 14px; padding: 10px 12px; border-radius: 8px; font-size: .9rem; }
+.ck-alert.error { background: #fee2e2; color: #991b1b; }
+.ck-alert.info { background: #e0f2fe; color: #075985; }
+.ck-alert.success { background: #dcfce7; color: #166534; }

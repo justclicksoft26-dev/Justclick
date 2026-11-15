@@ -1,3 +1,5 @@
+> **Merged:** this standalone version is replaced by the main project. The check-in API now lives in `server/src/checkin/` (served at `/api/attendance`) and the page in `client/src/checkin/` (served at `/attendance`). Keep this folder only until the merged version is deployed.
+
 # Attendance System (React + Node)
 
 Flow: email (@horizon.sch.sa) -> OTP by email -> attendance page with 4 periods

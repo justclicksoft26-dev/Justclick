@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import { connectDb, Otp, Attendance } from './db.js';
+import { connectDb, Otp, Attendance, Employee } from './db.js';
 import { windows, localParts, now } from './slots.js';
 import { sendOtp } from './mailer.js';
 
@@ -149,6 +149,13 @@ app.post('/api/attendance', auth, async (req, res) => {
       ip: req.ip,
       userAgent: req.headers['user-agent'] || '',
     });
+    // first check-in registers him as an employee (no-op afterwards)
+    const local = req.user.email.split('@')[0];
+    await Employee.updateOne(
+      { email: req.user.email },
+      { $setOnInsert: { name: local.replace(/[._-]+/g, ' '), registeredAt: now(), firstDate: state.date, active: true } },
+      { upsert: true }
+    );
   } catch (err) {
     if (err.code === 11000) {
       return res.status(409).json({ error: 'Already recorded for today.' });

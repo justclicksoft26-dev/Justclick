@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import CheckIn from './checkin/CheckIn.jsx';
 import Employees from './pages/Employees.jsx';
 import ImportEmployees from './pages/ImportEmployees.jsx';
 import Holidays from './pages/Holidays.jsx';
 import Report from './pages/Report.jsx';
+import WebAttendanceReport from './pages/WebAttendanceReport.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import EmployeeDetails from './pages/EmployeeDetails.jsx';
 import Lookups from './pages/Lookups.jsx';
@@ -32,6 +34,7 @@ const NAV = [
     { to: '/reports/actual', label: 'المواعيد الفعلية', icon: 'clock' },
     { to: '/reports/late', label: 'التأخيرات والغياب', icon: 'alert' },
     { to: '/reports/late-only', label: 'التأخيرات اليومية', icon: 'clock' },
+    { to: '/reports/web-attendance', label: 'الحضور الإلكتروني', icon: 'users', admin: true },
   ] },
 ];
 
@@ -98,6 +101,7 @@ function Shell({ user, logout }) {
             <Route path="/reports/actual" element={<Report key="actual" kind="actual" />} />
             <Route path="/reports/late" element={<Report key="late" kind="late" />} />
             <Route path="/reports/late-only" element={<Report key="lateOnly" kind="lateOnly" />} />
+            {user.isAdmin && <Route path="/reports/web-attendance" element={<WebAttendanceReport />} />}
             <Route path="/posting" element={<Posting />} />
           </Routes>
         </main>
@@ -106,7 +110,8 @@ function Shell({ user, logout }) {
   );
 }
 
-function App() {
+// /attendance is the staff web check-in (own OTP login, no ERP account); everything else is the ERP.
+function ErpApp() {
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(!!getToken());
 
@@ -123,11 +128,16 @@ function App() {
   if (!user) return <Login onLogin={setUser} />;
 
   return (
-    <BrowserRouter>
+    <>
       <Shell user={user} logout={logout} />
       <Toaster />
-    </BrowserRouter>
+    </>
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+function App() {
+  const { pathname } = useLocation();
+  return pathname === '/attendance' || pathname.startsWith('/attendance/') ? <CheckIn /> : <ErpApp />;
+}
+
+createRoot(document.getElementById('root')).render(<BrowserRouter><App /></BrowserRouter>);
