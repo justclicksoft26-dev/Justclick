@@ -14,7 +14,7 @@ const SECRET = (process.env.CHECKIN_JWT_SECRET || process.env.SESSION_SECRET || 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const RESEND_MS = 30 * 1000;
 const MAX_ATTEMPTS = 5;
-const SESSION_HOURS = Number(process.env.CHECKIN_SESSION_HOURS) || 5; // how long the OTP login stays valid
+const SESSION_HOURS = Number(process.env.CHECKIN_SESSION_HOURS) || 7; // how long the OTP login stays valid
 
 const emailRe = new RegExp(`^[a-z0-9._%+-]+@${DOMAIN.replace(/\./g, '\\.')}$`);
 const isValidEmail = (e) => typeof e === 'string' && (SKIP_DOMAIN_CHECK ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) : emailRe.test(e));
