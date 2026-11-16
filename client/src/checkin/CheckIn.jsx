@@ -74,7 +74,7 @@ function Login({ onSuccess }) {
           <label htmlFor="ck-email">Email</label>
           <input id="ck-email" type="email" placeholder="name@horizon.sch.sa" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
           {error && <div className="ck-alert error">{error}</div>}
-          <button className="ck-btn primary" disabled={loading}>{loading ? 'Sending...' : 'Send verification code'}</button>
+          <button className="ck-btn primary" disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</button>
         </form>
       ) : (
         <form onSubmit={verify}>
