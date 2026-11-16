@@ -39,7 +39,8 @@ function Login({ onSuccess }) {
     const clean = email.trim().toLowerCase();
     setLoading(true);
     try {
-      await call('/request-otp', { method: 'POST', body: { email: clean } });
+      const r = await call('/request-otp', { method: 'POST', body: { email: clean } });
+      if (r.token) return onSuccess(r.token); // server has OTP turned off: signed in directly
       setEmail(clean);
       setStep('otp');
       setInfo(`A 6-digit code was sent to ${clean}`);

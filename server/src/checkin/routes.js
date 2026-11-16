@@ -11,6 +11,7 @@ const DOMAIN = (process.env.CHECKIN_ALLOWED_DOMAIN || 'horizon.sch.sa').toLowerC
 const SKIP_DOMAIN_CHECK = process.env.CHECKIN_SKIP_DOMAIN_CHECK === 'true'; // testing only
 // separate secret so a check-in token can never be used as an ERP session
 const SECRET = (process.env.CHECKIN_JWT_SECRET || process.env.SESSION_SECRET || 'dev-secret') + ':checkin';
+const SKIP_OTP = process.env.CHECKIN_SKIP_OTP !== 'false'; // TEMPORARY: on by default
 const OTP_TTL_MS = 5 * 60 * 1000;
 const RESEND_MS = 30 * 1000;
 const MAX_ATTEMPTS = 5;
@@ -37,6 +38,8 @@ function auth(req, res, next) {
 router.post('/request-otp', wrap(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   if (!isValidEmail(email)) return res.status(400).json({ error: `Email must end with @${DOMAIN}` });
+  // temporary: no OTP, the email alone signs in (set CHECKIN_SKIP_OTP=false to bring the code back)
+  if (SKIP_OTP) return res.json({ token: jwt.sign({ email }, SECRET, { expiresIn: `${SESSION_HOURS}h` }), email });
   const otps = (await getDb()).collection('otps');
   const row = await otps.findOne({ email });
   if (row && Date.now() - row.lastSentAt.getTime() < RESEND_MS) {
