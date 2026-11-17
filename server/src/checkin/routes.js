@@ -12,6 +12,8 @@ const SKIP_DOMAIN_CHECK = process.env.CHECKIN_SKIP_DOMAIN_CHECK === 'true'; // t
 // separate secret so a check-in token can never be used as an ERP session
 const SECRET = (process.env.CHECKIN_JWT_SECRET || process.env.SESSION_SECRET || 'dev-secret') + ':checkin';
 const SKIP_OTP = process.env.CHECKIN_SKIP_OTP !== 'false'; // TEMPORARY: on by default
+// TEMPORARY switch: check-out open any time and without a check-in (CHECKIN_OPEN_CHECKOUT=true in .env)
+const OPEN_CHECKOUT = process.env.CHECKIN_OPEN_CHECKOUT === 'true';
 const OTP_TTL_MS = 5 * 60 * 1000;
 const RESEND_MS = 30 * 1000;
 const MAX_ATTEMPTS = 5;
@@ -98,6 +100,7 @@ async function buildState(email) {
 
   let outNote = '';
   if (outLog) outNote = 'Check-out recorded for today.';
+  else if (OPEN_CHECKOUT) outNote = '';
   else if (minutes >= 14 * 60) outNote = 'Check-out is closed for today.';
   else if (!inLog) outNote = 'Check in first.';
   else if (!w.checkOut) outNote = 'Check-out opens at 1:45 PM.';
@@ -107,7 +110,7 @@ async function buildState(email) {
     date,
     time,
     checkIn: { enabled: w.checkIn && !inLog, done: !!inLog, at: inLog ? localParts(inLog.recordedAt).time : null, note: inNote },
-    checkOut: { enabled: w.checkOut && !!inLog && !outLog, done: !!outLog, at: outLog ? localParts(outLog.recordedAt).time : null, note: outNote },
+    checkOut: { enabled: !outLog && (OPEN_CHECKOUT || (w.checkOut && !!inLog)), done: !!outLog, at: outLog ? localParts(outLog.recordedAt).time : null, note: outNote },
   };
 }
 
